@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { IngestionError, PITCHFORK_FEED_URL, type CacheValidators, type IngestionStore,
-  type RunResult, type SourceLease, type TrackInput } from "@music-discovery/shared";
+  type RunResult, type SourceRecord, type TrackInput } from "@music-discovery/shared";
 import { ingestPitchfork } from "../src/run.ts";
 
 const xml = await readFile(new URL("../../../packages/rss/test/fixtures/pitchfork.xml", import.meta.url), "utf8");
@@ -10,19 +10,18 @@ const html = await readFile(new URL("../../../packages/rss/test/fixtures/review.
 const url = "https://pitchfork.com/reviews/tracks/example-a-song/";
 
 function memoryStore() {
-  const lease: SourceLease = {
-    id: "source", token: "token", enabled: true, feedUrl: PITCHFORK_FEED_URL, etag: null, lastModified: null,
+  const source: SourceRecord = {
+    id: "source", enabled: true, feedUrl: PITCHFORK_FEED_URL, etag: null, lastModified: null,
   };
   const tracks = new Map<string, TrackInput>();
   const finished: RunResult[] = [];
   const caches: (CacheValidators | null)[] = [];
-  let releases = 0;
   const store: IngestionStore = {
-    async acquireSource() { return { ...lease }; },
+    async getSource() { return { ...source }; },
     async beginRun() { return "run"; },
     async recordDiscovery() {},
     async rejectEntry() {},
-    async upsertTrack(_lease, _runId, track) {
+    async upsertTrack(_source, _runId, track) {
       const previous = tracks.get(track.sourceUrl);
       tracks.set(track.sourceUrl, track);
       if (!previous) {
@@ -30,16 +29,15 @@ function memoryStore() {
       }
       return JSON.stringify(previous) === JSON.stringify(track) ? "unchanged" : "updated";
     },
-    async finishRun(_lease, result, validators) {
+    async finishRun(_source, result, validators) {
       finished.push(structuredClone(result));
       caches.push(validators);
-      lease.etag = validators?.etag ?? null;
-      lease.lastModified = validators?.lastModified ?? null;
+      source.etag = validators?.etag ?? null;
+      source.lastModified = validators?.lastModified ?? null;
       return result;
     },
-    async releaseSource() { releases++; },
   };
-  return { store, lease, tracks, finished, caches, releases: () => releases };
+  return { store, source, tracks, finished, caches };
 }
 function fetcher(feed = xml, page = html): typeof fetch {
   return async (input) => String(input).includes("/feed/")
@@ -63,24 +61,23 @@ test("initial import, rerun, and changed metadata produce exact unique upsert co
   } }));
   assert.equal(third.updated, 1);
   assert.equal(memory.tracks.size, 1);
-  assert.equal(memory.releases(), 3);
   assert.equal(memory.caches[0]?.etag, '"version-1"');
 });
 test("a malformed entry does not block a healthy one and clears validators", async () => {
   const memory = memoryStore();
-  memory.lease.etag = '"old"';
+  memory.source.etag = '"old"';
   const feed = xml.replace("</channel>", "<item><title>Invalid entry</title></item></channel>");
   const result = completed(await ingestPitchfork(memory.store, { http: { fetcher: fetcher(feed) } }));
   assert.equal(result.status, "partial_failure");
   assert.equal(result.found, 2);
   assert.equal(result.inserted, 1);
   assert.equal(result.rejected, 1);
-  assert.equal(memory.lease.etag, null);
+  assert.equal(memory.source.etag, null);
   assert.equal(memory.caches[0], null);
 });
 test("partial page failure retries unconditionally on the next hourly poll", async () => {
   const memory = memoryStore();
-  memory.lease.etag = '"old"';
+  memory.source.etag = '"old"';
   const failed = completed(await ingestPitchfork(memory.store, { http: { fetcher: fetcher(xml, "<html>changed layout</html>") } }));
   assert.equal(failed.status, "partial_failure");
   assert.equal(failed.rejected, 1);
@@ -123,14 +120,13 @@ test("network, malformed-feed, and database errors fail the run without leaking 
     } }));
     assert.equal(result.status, "failed");
     assert.equal(memory.finished.length, 1);
-    assert.equal(memory.releases(), 1);
     assert.ok(!JSON.stringify(result).includes("secret"));
     assert.equal(memory.caches[0], null);
   }
 });
 test("304 is a success without page requests or track writes", async () => {
   const memory = memoryStore();
-  memory.lease.etag = '"old"';
+  memory.source.etag = '"old"';
   let calls = 0;
   const result = completed(await ingestPitchfork(memory.store, { http: {
     fetcher: async () => { calls++; return new Response(null, { status: 304 }); },
@@ -139,7 +135,7 @@ test("304 is a success without page requests or track writes", async () => {
   assert.equal(result.notModified, true);
   assert.equal(result.found, 0);
   assert.equal(result.status, "succeeded");
-  assert.equal(memory.lease.etag, '"old"');
+  assert.equal(memory.source.etag, '"old"');
 });
 test("empty valid feed is successful and never deletes existing tracks", async () => {
   const memory = memoryStore();
@@ -151,61 +147,32 @@ test("empty valid feed is successful and never deletes existing tracks", async (
   assert.equal(result.found, 0);
   assert.equal(memory.tracks.size, 1);
 });
-test("a busy or disabled source skips without fetching or creating a run", async () => {
+test("a disabled source skips without fetching or creating a run", async () => {
   const memory = memoryStore();
-  memory.store.acquireSource = async () => null;
+  memory.store.getSource = async () => null;
   memory.store.beginRun = async () => { throw new Error("must not create a run"); };
-  assert.deepEqual(await ingestPitchfork(memory.store), { status: "skipped", reason: "busy_or_disabled" });
-  assert.equal(memory.releases(), 0);
+  assert.deepEqual(await ingestPitchfork(memory.store), { status: "skipped", reason: "disabled" });
 });
-test("an expired run budget is recorded and releases its lease", async () => {
+test("an expired run budget is recorded", async () => {
   const memory = memoryStore();
   const signal = AbortSignal.abort();
   const result = completed(await ingestPitchfork(memory.store, { signal }));
   assert.equal(result.status, "failed");
   assert.equal(result.errors[0]?.code, "RUN_DEADLINE");
-  assert.equal(memory.releases(), 1);
 });
-test("a lost lease or failed run finalization propagates and still releases the source", async () => {
+test("run finalization failure propagates", async () => {
   const memory = memoryStore();
-  memory.store.finishRun = async () => { throw new IngestionError("LEASE_LOST"); };
+  const failure = new IngestionError("DATABASE_ERROR");
+  memory.store.finishRun = async () => { throw failure; };
   await assert.rejects(ingestPitchfork(memory.store, { http: { fetcher: fetcher() } }),
-    (error) => error instanceof IngestionError && error.code === "LEASE_LOST");
-  assert.equal(memory.releases(), 1);
+    (error) => error === failure);
 });
-test("begin-run failure still attempts source release", async () => {
+
+test("begin-run failure propagates without fetching", async () => {
   const memory = memoryStore();
-  memory.store.beginRun = async () => { throw new Error("db down"); };
-  await assert.rejects(ingestPitchfork(memory.store));
-  assert.equal(memory.releases(), 1);
+  const failure = new Error("db down");
+  memory.store.beginRun = async () => { throw failure; };
+  await assert.rejects(ingestPitchfork(memory.store, { http: {
+    fetcher: async () => { throw new Error("must not fetch"); },
+  } }), (error) => error === failure);
 });
-
-test("source-release failure cannot replace a run-finalization failure", async () => {
-  const memory = memoryStore();
-  const primaryFailure = new IngestionError("LEASE_LOST");
-  memory.store.finishRun = async () => {
-    throw primaryFailure;
-  };
-  memory.store.releaseSource = async () => {
-    throw new Error("private release failure");
-  };
-
-  await assert.rejects(ingestPitchfork(memory.store, { http: { fetcher: fetcher() } }),
-    (error) => error === primaryFailure);
-  assert.deepEqual(primaryFailure.cleanupErrors, ["DATABASE_ERROR"]);
-});
-
-test("a failed run keeps its source error when release also fails", async () => {
-  const memory = memoryStore();
-  memory.store.releaseSource = async () => {
-    throw new Error("release failed");
-  };
-
-  await assert.rejects(ingestPitchfork(memory.store, { http: { fetcher: fetcher("<rss>bad") } }), (error) => {
-    assert.ok(error instanceof IngestionError);
-    assert.equal(error.code, "INVALID_FEED");
-    assert.deepEqual(error.cleanupErrors, ["DATABASE_ERROR"]);
-    return true;
-  });
-});
-

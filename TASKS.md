@@ -410,3 +410,135 @@ This section is updated as each task progresses, including verification evidence
   (95 total), offline fixture preview, shell syntax and whitespace checks passed.
   Credential-pattern scan found no matches; environment/build files are ignored.
   Real PostgreSQL integration and live AWS/network testing were not performed.
+
+## Supabase verified TLS connectivity
+
+- Ignored the local certs directory. The downloaded Supabase Root 2021 CA is a
+  public certificate, not a private key; it is valid through April 2031.
+- Both DATABASE_URL and DATABASE_MIGRATION_URL initially failed certificate-chain
+  validation. Retried with NODE_EXTRA_CA_CERTS pointing at certs/prod-ca-2021.crt
+  before Node startup, retaining ssl=verify-full. Both SELECT 1 checks succeeded.
+- No credential values were printed, no migration was applied, and no application
+  data was written. This verifies local connections, not Lambda connectivity.
+- The trust setting was applied only to the check process; future database
+  commands/deployments must also supply the certificate/trust configuration.
+
+## Supabase local preparation and Drizzle security update
+
+- Added loopback-only local TLS selection shared by runtime and migration clients,
+  plus db:migrate:local/test:db:local commands reading a separate .env.local.
+  Tests reject non-loopback no-TLS connections and sanitize invalid URLs.
+- User approved installing Supabase CLI and starting Docker Desktop. CLI 3.1.0
+  was downloaded and runs, but the add command exited with unapproved esbuild
+  build scripts. No additional build approvals or alternative installs were run.
+  Local Supabase initialization/container image downloads remain pending.
+- With explicit approval, upgraded drizzle-orm from 0.44.7 to exact 0.45.4 using
+  --ignore-scripts. Drizzle Kit remains 0.31.11. No migration history was changed.
+- Verification: typecheck, 69 application tests, 16 infrastructure tests, 10 mocked
+  upload tests and three rebuilt Lambda smoke tests passed (98 total). Generation
+  reported no schema changes; no migrations were applied. Real PostgreSQL
+  integration tests remain unrun until the local database is ready.
+- Audit confirms the high-severity ORM identifier-escaping advisory is resolved.
+  One moderate development-only esbuild 0.18.20 advisory remains through Drizzle
+  Kit's legacy loader (GHSA-67mh-4wv8-2f99). This upgrade does not resolve that
+  separate dependency finding or approve its pending build scripts.
+- No hosted database migration or AWS upload/configuration change performed.
+
+## Remove unused legacy schema before first migration
+
+- User confirmed no migrations have ever been applied. Removed the unused
+  feeds/articles definitions and replaced the two unapplied migrations and their
+  snapshots with one freshly generated 0000_initial baseline.
+- The baseline creates ingestion_sources, tracks and ingestion_runs, preserving
+  their constraints, indexes, RLS and the manually maintained idempotent Pitchfork
+  source seed. Updated schema regression checks and current documentation.
+- Verification: typecheck and all 95 tests passed; a second Drizzle generation
+  reported no schema changes, and git diff --check passed. Real PostgreSQL
+  integration tests were not run because the local database is not ready.
+  No migration was applied and no dependencies or AWS resources were changed.
+
+## Follow-up — remove source leases
+
+- Removed lease tokens from sources/runs, source lease expiration, ownership checks,
+  acquisition/release methods, lease timing policies and lease-specific errors.
+  Source loading now skips only disabled sources; each enabled invocation creates
+  an independent run. Unfinished earlier runs are not automatically closed.
+- Retained source/URL track uniqueness, per-run source/status validation and atomic
+  run/cache finalization. Same-source overlapping executions are allowed; metadata
+  and validators follow commit order. There is no application-level ownership gate.
+- Clear persisted validators when a run starts, while using the previously loaded
+  validators for its request. An interrupted run therefore leaves the next worker
+  able to fetch the full feed without lease-based recovery.
+- Reconciled persistence with the user's already-removed schema counter columns.
+  Counts remain in returned results only. Generated a follow-up migration removing
+  lease fields and those counters without rewriting the initial migration.
+- Updated regression tests, specification, operations and infrastructure descriptions.
+- Verification: typecheck; 67 offline application/schema tests; 26 infrastructure
+  and mocked-upload tests, plus three rebuilt Lambda smoke tests passed (96 total).
+  Drizzle reports no further schema differences; Git whitespace check passed.
+  Four PostgreSQL tests skipped without TEST_DATABASE_URL. No installation,
+  database migration, deployment or upload.
+
+## Follow-up — consolidate unapplied migrations
+
+- Squashed the initial schema and lease/counter removal into 0000_initial.sql.
+  The initial SQL now creates only the final columns, retaining RLS, foreign keys,
+  checks, indexes and the idempotent source seed.
+- Replaced the initial snapshot with the final schema snapshot, reset its parent,
+  reduced the journal to one entry and removed the second SQL/snapshot files.
+- Updated schema tests to compare every table's SQL and snapshot columns with the
+  current Drizzle schema. This consolidation assumes the migrations are unapplied;
+  no remote database was inspected or modified.
+- Verification: typecheck, all four schema tests and Git whitespace checks passed.
+  Drizzle generation reported no schema differences. No dependencies installed
+  and no database migration executed.
+
+## Follow-up — use Drizzle Kit migration command
+
+- Replaced the custom migration runner with the installed Drizzle Kit `migrate`
+  command for hosted and local package scripts. Removed packages/db/src/migrate.ts.
+- Added drizzle.migrate.config.ts using DATABASE_MIGRATION_URL, verified TLS and
+  a 10-second connection timeout. The local script explicitly enables loopback-only
+  no-TLS connections. URL flags cannot override the selected TLS policy, and
+  prepared statements remain disabled. Drizzle Kit owns lifecycle/error reporting;
+  the old script's custom close timeout and sanitized error wrapper are removed.
+- Kept generation configuration independent of credentials. Updated setup and
+  policy documentation and included the migration config in typechecking.
+- Added offline config tests for actual driver TLS/timeout/prepare options,
+  loopback validation and missing/invalid credentials without credential exposure.
+- Verification: typecheck, 11 relevant connection/schema/config tests and Git
+  whitespace checks passed. Drizzle generation reports no schema differences.
+  No dependencies installed, remote migrations applied, deployments or uploads.
+
+## Authorized Supabase schema migration
+
+- With explicit user authorization, ran the built-in Drizzle Kit migration via
+  `NODE_EXTRA_CA_CERTS="$PWD/certs/prod-ca-2021.crt" pnpm db:migrate` against the
+  hosted database configured by DATABASE_MIGRATION_URL in .env.
+- The sandboxed attempt failed; the network-enabled retry applied the single
+  consolidated migration successfully with verified TLS.
+- Read-only verification confirmed that all three tables match the current schema:
+  ingestion_sources has 11 columns, ingestion_runs 7 and tracks 18. RLS is enabled
+  on all three, the enabled Pitchfork source seed exists, and migration history
+  contains one applied migration. An initial verification import failed locally;
+  resolving dependencies from the DB workspace allowed verification to pass.
+- No track ingestion, Lambda upload, dependency installation or runtime-role/RLS
+  policy provisioning was performed. The full DB integration suite was not run
+  against this hosted database.
+- 0000_initial.sql is now applied history: preserve it and add new migrations for
+  future schema changes rather than editing or consolidating it again.
+
+## Commit preparation — Supabase schema simplification
+
+- Reviewed pending schema, migration tooling, TLS/local configuration and dependency
+  changes, including the earlier authorized Supabase CLI and Drizzle ORM update.
+- Updated README/spec status to reflect the successful hosted schema migration,
+  while retaining the distinction from the unconnected RSS-only Lambda handler.
+- Final verification: typecheck, 71 offline application/config/schema tests,
+  26 infrastructure/mocked-upload tests and three rebuilt bundle tests passed
+  (100 total). Full PostgreSQL ingestion integration tests remain unrun; hosted
+  schema/RLS/source-seed checks were performed during migration as recorded above.
+
+- User approved committing the public Supabase root CA certificate. Verified it is
+  a single X.509 CA certificate valid through April 2031 with no private-key block.
+  Git ignores other files under certs/ and explicitly includes prod-ca-2021.crt.

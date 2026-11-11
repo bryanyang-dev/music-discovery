@@ -7,4 +7,6 @@ coverage/
 *.log
 .DS_Store
 infra/*.zip
+/certs/*
+!/certs/prod-ca-2021.crt
 

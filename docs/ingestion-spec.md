@@ -1,8 +1,10 @@
 # Pitchfork Best New Tracks — implementation specification
 
-Status: the RSS-only Lambda handler is implemented; Supabase integration is next.
+Status: the RSS-only Lambda handler is implemented; the initial Supabase schema
+and source seed have been migrated. Connecting the handler is next.
 `run.ts` and `packages/db` implement the database pipeline below, but the current
-handler does not invoke them. Remote PostgreSQL integration remains unverified.
+handler does not invoke them. Hosted schema verification passed; full database
+ingestion integration remains unverified.
 This file records the planned ingestion behavior, including persistent run records;
 it does not require AWS Lambda durable executions.
 
@@ -56,12 +58,14 @@ are documented in packages/rss/test/fixtures/README.md.
 ## Storage
 
 - ingestion_sources: one seeded source, feed URL/category/enabled status, last
-  attempt/success, ETag/Last-Modified, and expiring source lease/fencing token.
+  attempt/success and ETag/Last-Modified.
 - tracks: normalized metadata, source foreign key, metadata hash and first/last
   seen/update timestamps. Unique by (source_id, source_url); newest-review index.
-- ingestion_runs: source/run/lease identifiers, start/end, status, counts,
+- ingestion_runs: source/run identifiers, start/end, status,
   not-modified flag, and at most 100 sanitized issue codes/URLs.
-- Legacy feeds/articles remain untouched for non-destructive migration compatibility.
+- A single initial migration creates these three tables and seeds the source,
+  without source leases or persisted run counters.
+  Unused legacy feeds/articles were removed before any migrations were applied.
 
 Only trusted server-side database roles may access the RLS-enabled tables.
 
@@ -71,8 +75,7 @@ URLs must be HTTPS on pitchfork.com/www.pitchfork.com with approved path types.
 Normalize the www host, fragments and known tracking parameters; retain meaningful
 query parameters. Do not deduplicate by title, artist, GUID or publication date.
 
-Source-row serialization plus a unique constraint/atomic upsert makes retries
-duplicate-safe. Preserve row ID and first_seen_at. Refresh last_seen_at for fetched
+A unique constraint and atomic upsert prevent duplicate track rows on retries. Preserve row ID and first_seen_at. Refresh last_seen_at for fetched
 entries. Compare merged metadata hashes to distinguish inserted/updated/unchanged;
 updated_at changes only with supplied content changes. Missing optional metadata
 never erases known values. Deliberate deletions of optional fields cannot be inferred
@@ -84,22 +87,24 @@ merging is deliberately not guessed.
 
 ## Run lifecycle and concurrency
 
-1. Atomically acquire a 360-second source lease using database time and a random
-   fencing token. Disabled/busy sources are a logged no-op, not a new run row.
-2. Close any previous interrupted running records and clear their cached validators.
-3. Create a durable running record, then fetch/parse the feed outside transactions.
-4. Enrich entries sequentially. Each valid track commits in its own transaction.
-   Before every mutation, lock the source row and verify token/expiry.
+1. Load the source by key. Disabled sources skip without creating a run.
+2. Create a running record, record the source attempt time and clear its persisted
+   HTTP validators in one transaction. This run uses the validators already loaded;
+   clearing them ensures an interrupted run is retried with a full feed fetch.
+3. Fetch/parse the feed outside transactions and enrich entries sequentially.
+4. Commit each valid track separately, checking that its run belongs to the source
+   and is still running. No network fetch is enclosed in a database transaction.
 5. Finalize the run and source cache state atomically.
-6. Release only the caller's token, even after failure.
 
-Session advisory locks are not used: they are unsuitable for the transaction
-pooler. A crashed worker's lease eventually expires; stale workers are fenced from
-track/run/cache updates after takeover. Lambda reserved concurrency one is an
-additional connection-pressure control, not the correctness mechanism.
+There are no source leases or ownership tokens. Runs for different sources are
+independent, and overlapping runs for the same source are allowed. The intended
+operation is one hourly worker per source; the future template limits its function
+concurrency to one. Other invokers are not serialized by the application. Under an
+overlap, the last committed track/cache update wins, and per-run counts can be
+approximate. Track uniqueness remains enforced by (source_id, source_url).
 
-No long-running transaction encloses network fetches. Completed track writes survive
-later entry failures. A new worker's data cannot be overwritten by an expired token.
+A killed worker can leave a running record. Later runs do not automatically mark
+it failed because it may still be active. Inspect unfinished runs manually.
 
 ## Failures and HTTP cache rules
 
@@ -121,13 +126,9 @@ failed enrichment. Duplicate feed occurrences are folded before processing, so
 found may exceed the sum of those counters. A failed/deadline run may have
 unprocessed entries; the counts are not a claim that those were rejected.
 
-Discovery/rejection checkpoints are durable. Each track's inserted/updated/unchanged
-counter increments in the same transaction as that track write; a killed worker
-does not lose counts of committed tracks. Finalization returns persisted counters,
-not potentially stale in-memory guesses after an ambiguous acknowledgement.
-A killed process leaves a running row; on takeover it becomes failed with
-INTERRUPTED_RUN while retaining committed counts. Unprocessed entries are still
-unprocessed, not fabricated rejections. This is not a per-attempt audit ledger.
+Discovery/rejection error checkpoints are durable. Counts exist only in the run
+result, not as database columns; a killed worker loses its in-memory counts.
+An ambiguous database acknowledgement can also make result counts approximate.
 
 ## Bounds and security
 
@@ -137,23 +138,23 @@ unprocessed, not fabricated rejections. This is not a per-attempt audit ledger.
 - XML entity/DOCTYPE declarations and non-UTF-8 responses are rejected.
 - Current RSS-only handler: at most 30 seconds across requests/retries, capped at
   Lambda remaining time minus 250 milliseconds for logging/return. It does not use
-  the database cleanup reserve or source lease. The handler owns up to three
+  the database work budget. The handler owns up to three
   retries after the initial attempt, with 1/2/4-second exponential delays,
   respecting longer Retry-After values and the shared deadline. Nested HTTP
   retries are disabled for this path. Only transient HTTP/network/timeout errors
   marked retryable by the HTTP layer qualify; invalid feeds and permanent errors
   fail immediately. Structured logs carry the request ID, attempt number, safe
   error code, retry delay, and final outcome; successful logs include the response.
-- Database ingestion service: a 240-second default work budget and a 360-second
-  source lease. The future infrastructure template allows a 300-second invocation,
-  leaving cleanup time before timeout and lease expiry. Runtime Lambda deadline
+- Database ingestion service: a 240-second default work budget.
+  The future infrastructure template allows a 300-second invocation,
+  leaving cleanup time before timeout. Runtime Lambda deadline
   propagation must be wired when the database handler is enabled.
 - Database connection: one per invocation, verified TLS, no prepared statements,
   5-second connection timeout, transaction-local 8-second statement/2-second lock
   limits, and a 15-second client-side operation bound. Aborting work or exceeding
   the client bound terminates the driver rather than leaving an active abandoned
-  query behind a raced promise. Finalization/release have their own bounded cleanup
-  allowance; if the connection is unusable, next acquisition recovers the run.
+  query behind a raced promise. Finalization has its own bounded cleanup
+  allowance; an unusable connection may leave the run unfinished.
 - Secrets only in private environment/secret configuration, never in logs/events.
 - Logs store bounded error codes and approved URL paths without query strings.
 - URL host/path checks restrict this to the fixed publisher; this is not a general
@@ -173,8 +174,8 @@ failure destinations and CloudWatch alarms. Schedule enablement, secret/artifact
 creation, notification subscriptions, real schema validation and deployment remain
 explicit operational steps, not automatic actions.
 
-Unit/fixture tests run offline. Real Postgres tests cover upserts, expiry fencing,
-competing clients and atomic run/cache finalization against a pre-migrated
+Unit/fixture tests run offline. Real Postgres tests cover upserts, independent runs,
+source/run validation and atomic run/cache finalization against a pre-migrated
 disposable database. Local build tests load the actual RSS-only bundled handler. Infrastructure
 tests check structural/security invariants, not cloud-side schema/deployment success.
 
@@ -185,12 +186,12 @@ miscellaneous global settings file:
 
 | Owner | Policy | Reason |
 | --- | --- | --- |
-| apps/ingestion/src/timing.ts | Work, invocation, cleanup and lease timing | One application-level timing contract for handler and orchestration. Work plus cleanup fits the invocation; the lease outlives it. Tests compare the fallback with the undeployed template. |
+| apps/ingestion/src/timing.ts | Database work duration | Bounds database ingestion work. Tests ensure it leaves cleanup time within the undeployed template timeout. |
 | packages/rss/src/http-policy.ts | Request, redirect, retry, validator and body limits | Bound public-network work and publisher traffic. Three attempts and a 10-second retry-delay ceiling defer long outages to later hourly runs rather than spin. Feed/review bodies retain their 2/3 MB bounds. |
-| packages/db/src/policy.ts | Pool, connection, SQL, operation, close and lease limits | Lock timeout precedes statement timeout, which precedes the client deadline. Transaction-local settings are parameterized and do not depend on session state surviving a pooler. |
+| packages/db/src/policy.ts | Pool, connection, SQL, operation and close limits | Lock timeout precedes statement timeout, which precedes the client deadline. Transaction-local settings are parameterized and do not depend on session state surviving a pooler. |
 | packages/shared/src/index.ts | MAX_RUN_ERROR_COUNT | The 100-issue persistence contract is shared by orchestration and storage so truncation rules cannot drift. |
 | RSS parsing/text modules | Feed-entry, structured-node and text-character limits | Keep parsing bounds next to their algorithms. Equal numeric values with different meanings remain independent policies. |
-| Migration runner | Migration-specific connection/close limits | Schema changes have a distinct lifecycle from the hourly worker; runtime network policy is not silently reused. |
+| drizzle.migrate.config.ts | Migration URL, TLS and 10-second connection timeout | Drizzle Kit runs migrations with a direct/session connection. Local no-TLS requires an explicit loopback-only flag; CLI manages connection lifecycle. |
 
 These are conservative application defaults, not claims about publisher or cloud
 service limits. This cleanup retains the existing ingestion limits and adds no

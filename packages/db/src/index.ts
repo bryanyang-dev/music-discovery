@@ -1,12 +1,12 @@
-import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
-import { and, eq, or, isNull, sql } from "drizzle-orm";
-import { IngestionError, MAX_RUN_ERROR_COUNT, type IngestionStore, type SourceLease } from "@music-discovery/shared";
+import { and, eq, sql } from "drizzle-orm";
+import { IngestionError, MAX_RUN_ERROR_COUNT, type IngestionStore, type SourceRecord } from "@music-discovery/shared";
 import { ingestionRuns, ingestionSources, tracks } from "./schema.ts";
 import { mergeTrack, metadataHash } from "./merge.ts";
 import { boundDatabaseOperation } from "./deadline.ts";
 import { DATABASE_POLICY } from "./policy.ts";
+import { databaseSsl } from "./connection.ts";
 
 interface DatabaseOptions {
   localTest?: boolean;
@@ -18,17 +18,11 @@ interface TransactionOptions {
 }
 
 export function connectDatabase(connectionString: string, options: DatabaseOptions = {}) {
-  const parsed = new URL(connectionString);
-  if (!["postgres:", "postgresql:"].includes(parsed.protocol)) {
-    throw new IngestionError("DATABASE_ERROR");
-  }
-  if (options.localTest && !["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname)) {
-    throw new IngestionError("DATABASE_ERROR");
-  }
+  const ssl = databaseSsl(connectionString, { allowLocalNoTls: options.localTest ?? false });
   const client = postgres(connectionString, {
     prepare: false,
     max: DATABASE_POLICY.maxConnectionCount,
-    ssl: options.localTest ? false : "verify-full",
+    ssl,
     connect_timeout: DATABASE_POLICY.connectTimeoutSeconds,
     idle_timeout: DATABASE_POLICY.idleTimeoutSeconds,
     connection: { application_name: "music-discovery-ingestion" },
@@ -54,92 +48,48 @@ export function connectDatabase(connectionString: string, options: DatabaseOptio
     );
   }
 
-  async function assertLease(transaction: Transaction, lease: SourceLease) {
-    const [source] = await transaction.select({ id: ingestionSources.id }).from(ingestionSources)
-      .where(and(
-        eq(ingestionSources.id, lease.id), eq(ingestionSources.leaseToken, lease.token),
-        sql`${ingestionSources.leaseExpiresAt} > clock_timestamp()`,
-      )).for("update");
-    if (!source) {
-      throw new IngestionError("LEASE_LOST");
-    }
-  }
-
-  function activeRun(lease: SourceLease, runId: string) {
-    return and(eq(ingestionRuns.id, runId), eq(ingestionRuns.sourceId, lease.id),
-      eq(ingestionRuns.leaseToken, lease.token), eq(ingestionRuns.status, "running"));
+  function activeRun(source: SourceRecord, runId: string) {
+    return and(
+      eq(ingestionRuns.id, runId),
+      eq(ingestionRuns.sourceId, source.id),
+      eq(ingestionRuns.status, "running"),
+    );
   }
 
   async function requireRunUpdate(
-    transaction: Transaction, lease: SourceLease, runId: string,
+    transaction: Transaction, source: SourceRecord, runId: string,
     patch: Partial<typeof ingestionRuns.$inferInsert>,
   ) {
     const saved = await transaction.update(ingestionRuns).set(patch)
-      .where(activeRun(lease, runId)).returning({ id: ingestionRuns.id });
+      .where(activeRun(source, runId)).returning({ id: ingestionRuns.id });
     if (!saved.length) {
-      throw new IngestionError("LEASE_LOST");
-    }
-  }
-
-  async function incrementRunCounter(
-    transaction: Transaction,
-    lease: SourceLease,
-    runId: string,
-    outcome: "inserted" | "updated" | "unchanged",
-  ): Promise<void> {
-    const counter = ingestionRuns[outcome];
-    const saved = await transaction.update(ingestionRuns)
-      .set({ [outcome]: sql`${counter} + 1` })
-      .where(activeRun(lease, runId))
-      .returning({ id: ingestionRuns.id });
-    if (!saved.length) {
-      throw new IngestionError("LEASE_LOST");
+      throw new IngestionError("DATABASE_ERROR");
     }
   }
 
   const store: IngestionStore = {
-    async acquireSource(sourceKey, leaseSeconds) {
-      if (!Number.isInteger(leaseSeconds) || leaseSeconds < DATABASE_POLICY.minimumLeaseSeconds || leaseSeconds > DATABASE_POLICY.maximumLeaseSeconds) {
-        throw new IngestionError("DATABASE_ERROR");
-      }
+    async getSource(sourceKey) {
       return inTransaction(async (transaction) => {
-        const token = randomUUID();
-        const [source] = await transaction.update(ingestionSources).set({
-          leaseToken: token,
-          leaseExpiresAt: sql`clock_timestamp() + ${leaseSeconds} * interval '1 second'`,
-          lastAttemptAt: sql`clock_timestamp()`,
-        }).where(and(
-          eq(ingestionSources.key, sourceKey), eq(ingestionSources.enabled, true),
-          or(isNull(ingestionSources.leaseToken), sql`${ingestionSources.leaseExpiresAt} <= clock_timestamp()`),
-        )).returning();
+        const [source] = await transaction.select().from(ingestionSources)
+          .where(eq(ingestionSources.key, sourceKey));
         if (!source) {
-          const [existing] = await transaction.select({ enabled: ingestionSources.enabled }).from(ingestionSources)
-            .where(eq(ingestionSources.key, sourceKey));
-          if (!existing) {
-            throw new IngestionError("SOURCE_NOT_FOUND");
-          }
+          throw new IngestionError("SOURCE_NOT_FOUND");
+        }
+        if (!source.enabled) {
           return null;
         }
-        const interrupted = await transaction.update(ingestionRuns).set({
-          status: "failed",
-          finishedAt: sql`clock_timestamp()`,
-          errors: [{ code: "INTERRUPTED_RUN", sourceUrl: null }],
-        }).where(and(eq(ingestionRuns.sourceId, source.id), eq(ingestionRuns.status, "running")))
-          .returning({ id: ingestionRuns.id });
-        if (interrupted.length) {
-          await transaction.update(ingestionSources).set({ etag: null, lastModified: null })
-            .where(eq(ingestionSources.id, source.id));
-          source.etag = null;
-          source.lastModified = null;
-        }
         return { id: source.id, feedUrl: source.feedUrl, enabled: source.enabled,
-          etag: source.etag, lastModified: source.lastModified, token };
+          etag: source.etag, lastModified: source.lastModified };
       });
     },
-    async beginRun(lease) {
+    async beginRun(source) {
       return inTransaction(async (transaction) => {
-        await assertLease(transaction, lease);
-        const [run] = await transaction.insert(ingestionRuns).values({ sourceId: lease.id, leaseToken: lease.token })
+        // Clear persisted validators before work so a crash forces a full retry.
+        // This run can still use the validators loaded by getSource.
+        await transaction.update(ingestionSources).set({
+          lastAttemptAt: sql`clock_timestamp()`, etag: null, lastModified: null,
+        }).where(eq(ingestionSources.id, source.id));
+        const [run] = await transaction.insert(ingestionRuns).values({ sourceId: source.id })
           .returning({ id: ingestionRuns.id });
         if (!run) {
           throw new IngestionError("DATABASE_ERROR");
@@ -147,79 +97,67 @@ export function connectDatabase(connectionString: string, options: DatabaseOptio
         return run.id;
       });
     },
-    async recordDiscovery(lease, runId, found, errors) {
+    async recordDiscovery(source, runId, errors) {
       await inTransaction(async (transaction) => {
-        await assertLease(transaction, lease);
-        await requireRunUpdate(transaction, lease, runId, {
-          found,
-          rejected: errors.length,
+        await requireRunUpdate(transaction, source, runId, {
           errors: errors.slice(0, MAX_RUN_ERROR_COUNT),
         });
       });
     },
-    async rejectEntry(lease, runId, issue) {
+    async rejectEntry(source, runId, issue) {
       await inTransaction(async (transaction) => {
-        await assertLease(transaction, lease);
         const saved = await transaction.update(ingestionRuns).set({
-          rejected: sql`${ingestionRuns.rejected} + 1`,
           errors: sql`CASE WHEN jsonb_array_length(${ingestionRuns.errors}) < ${MAX_RUN_ERROR_COUNT}
             THEN ${ingestionRuns.errors} || ${JSON.stringify([issue])}::jsonb ELSE ${ingestionRuns.errors} END`,
-        }).where(activeRun(lease, runId)).returning({ id: ingestionRuns.id });
+        }).where(activeRun(source, runId)).returning({ id: ingestionRuns.id });
         if (!saved.length) {
-      throw new IngestionError("LEASE_LOST");
-    }
+          throw new IngestionError("DATABASE_ERROR");
+        }
       });
     },
-    async upsertTrack(lease, runId, incoming) {
+    async upsertTrack(source, runId, incoming) {
       if (!incoming.trackTitle.trim() || !incoming.artists.length || incoming.artists.some((artist) => !artist.trim())) {
         throw new IngestionError("INVALID_ENTRY");
       }
       return inTransaction(async (transaction) => {
-        await assertLease(transaction, lease);
+        const [run] = await transaction.select({ id: ingestionRuns.id }).from(ingestionRuns)
+          .where(activeRun(source, runId)).for("update");
+        if (!run) {
+          throw new IngestionError("DATABASE_ERROR");
+        }
         const [previous] = await transaction.select().from(tracks)
-          .where(and(eq(tracks.sourceId, lease.id), eq(tracks.sourceUrl, incoming.sourceUrl)));
+          .where(and(eq(tracks.sourceId, source.id), eq(tracks.sourceUrl, incoming.sourceUrl)));
         const merged = mergeTrack(incoming, previous);
         const hash = metadataHash(merged);
         if (previous?.metadataHash === hash) {
           await transaction.update(tracks).set({ lastSeenAt: sql`clock_timestamp()` }).where(eq(tracks.id, previous.id));
-          await incrementRunCounter(transaction, lease, runId, "unchanged");
           return "unchanged";
         }
-        await transaction.insert(tracks).values({ ...merged, sourceId: lease.id, metadataHash: hash })
+        await transaction.insert(tracks).values({ ...merged, sourceId: source.id, metadataHash: hash })
           .onConflictDoUpdate({
             target: [tracks.sourceId, tracks.sourceUrl],
             set: { ...merged, metadataHash: hash, lastSeenAt: sql`clock_timestamp()`, updatedAt: sql`clock_timestamp()` },
           });
         const outcome = previous ? "updated" : "inserted";
-        await incrementRunCounter(transaction, lease, runId, outcome);
         return outcome;
       });
     },
-    async finishRun(lease, result, validators) {
+    async finishRun(source, result, validators) {
       return inTransaction(async (transaction) => {
-        await assertLease(transaction, lease);
         const finished = await transaction.update(ingestionRuns).set({
           status: result.status,
           finishedAt: sql`clock_timestamp()`,
           notModified: result.notModified,
           errors: result.errors.slice(0, MAX_RUN_ERROR_COUNT),
-        }).where(activeRun(lease, result.runId)).returning();
+        }).where(activeRun(source, result.runId)).returning();
         if (!finished.length) {
-          throw new IngestionError("LEASE_LOST");
+          throw new IngestionError("DATABASE_ERROR");
         }
         await transaction.update(ingestionSources).set(result.status === "succeeded" ? {
           lastSuccessAt: sql`clock_timestamp()`, etag: validators?.etag ?? null,
           lastModified: validators?.lastModified ?? null,
-        } : { etag: null, lastModified: null }).where(eq(ingestionSources.id, lease.id));
-        const saved = finished[0]!;
-        return { ...result, found: saved.found, inserted: saved.inserted, updated: saved.updated,
-          unchanged: saved.unchanged, rejected: saved.rejected };
-      }, { phase: "cleanup" });
-    },
-    async releaseSource(lease) {
-      await inTransaction(async (transaction) => {
-        await transaction.update(ingestionSources).set({ leaseToken: null, leaseExpiresAt: null })
-          .where(and(eq(ingestionSources.id, lease.id), eq(ingestionSources.leaseToken, lease.token)));
+        } : { etag: null, lastModified: null }).where(eq(ingestionSources.id, source.id));
+        return result;
       }, { phase: "cleanup" });
     },
   };

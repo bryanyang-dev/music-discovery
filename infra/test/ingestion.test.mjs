@@ -211,7 +211,7 @@ test('partial failure marker occurs in the implemented JSON log shape despite La
       event: 'ingestion_completed', source: 'pitchfork', category: 'best_new_track',
       status,
     };
-    const record = status === 'skipped' ? { ...identity, reason: 'busy_or_disabled' } : {
+    const record = status === 'skipped' ? { ...identity, reason: 'disabled' } : {
       ...identity, runId: '00000000-0000-4000-8000-000000000001', notModified: false,
       found: 2, inserted: 1, updated: 0, unchanged: 0,
       rejected: status === 'partial_failure' ? 1 : 0,

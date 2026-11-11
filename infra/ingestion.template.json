@@ -298,7 +298,7 @@
       "Type": "AWS::Lambda::Function",
       "Metadata": {
         "com.aws.cloudformation.Context": {
-          "why": "Single-source Pitchfork best-new-track worker with public outbound access and database fencing leases for per-record commits.",
+          "why": "Single-source Pitchfork best-new-track worker with public outbound access and per-record database commits.",
           "must": [
             "Bundle exports async handler from root index.cjs.",
             "Keep DATABASE_URL secret; no public ingress or function URL.",
@@ -366,7 +366,7 @@
         "com.aws.cloudformation.Context": {
           "why": "Bound asynchronous retry time and preserve terminal failure records separately from delivery errors.",
           "must": [
-            "Handler must throw sanitized codes on failed or partial_failure status; per-record writes must be idempotent and fenced by the source lease."
+            "Handler must throw sanitized codes on failed or partial_failure status; per-record writes must be idempotent."
           ]
         }
       },

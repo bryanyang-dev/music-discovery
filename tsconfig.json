@@ -19,6 +19,6 @@
   "include": [
     "apps/**/*.ts",
     "packages/**/*.ts",
-    "drizzle.config.ts"
+    "drizzle*.config.ts"
   ]
 }

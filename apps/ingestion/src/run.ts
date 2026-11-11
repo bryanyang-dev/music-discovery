@@ -5,11 +5,10 @@ import {
   MAX_RUN_ERROR_COUNT,
   PITCHFORK_SOURCE_KEY,
   safeLogUrl,
-  toIngestionError,
   type CacheValidators,
   type IngestionStore,
   type RunResult,
-  type SourceLease,
+  type SourceRecord,
 } from "@music-discovery/shared";
 import {
   extractTrack,
@@ -20,18 +19,11 @@ import {
 } from "@music-discovery/rss";
 import { INGESTION_TIMING } from "./timing.ts";
 
-export type RunOutcome = RunResult | { status: "skipped"; reason: "busy_or_disabled" };
+export type RunOutcome = RunResult | { status: "skipped"; reason: "disabled" };
 
 export interface IngestionOptions {
   signal?: AbortSignal;
   http?: HttpOptions;
-}
-
-function runFailure(result: RunOutcome): IngestionError | undefined {
-  if (result.status === "failed" || result.status === "partial_failure") {
-    return new IngestionError(result.errors[0]?.code ?? "INVALID_ENTRY");
-  }
-  return undefined;
 }
 
 function assertWorkCanContinue(signal: AbortSignal): void {
@@ -42,7 +34,7 @@ function assertWorkCanContinue(signal: AbortSignal): void {
 
 async function processFeedEntries(
   store: IngestionStore,
-  lease: SourceLease,
+  source: SourceRecord,
   result: RunResult,
   feed: ParsedFeed,
   http: HttpOptions,
@@ -51,7 +43,7 @@ async function processFeedEntries(
   result.found = feed.found;
   result.rejected = feed.errors.length;
   result.errors.push(...feed.errors);
-  await store.recordDiscovery(lease, result.runId, result.found, feed.errors);
+  await store.recordDiscovery(source, result.runId, feed.errors);
 
   for (const entry of feed.entries) {
     assertWorkCanContinue(signal);
@@ -71,12 +63,12 @@ async function processFeedEntries(
       };
       result.rejected++;
       result.errors.push(issue);
-      await store.rejectEntry(lease, result.runId, issue);
+      await store.rejectEntry(source, result.runId, issue);
       continue;
     }
 
     assertWorkCanContinue(signal);
-    const outcome = await store.upsertTrack(lease, result.runId, track);
+    const outcome = await store.upsertTrack(source, result.runId, track);
     result[outcome]++;
   }
 
@@ -87,11 +79,11 @@ async function processFeedEntries(
 
 async function executeRun(
   store: IngestionStore,
-  lease: SourceLease,
+  source: SourceRecord,
   signal: AbortSignal,
   http: HttpOptions,
 ): Promise<RunResult> {
-  const runId = await store.beginRun(lease);
+  const runId = await store.beginRun(source);
   const result: RunResult = {
     runId,
     status: "succeeded",
@@ -103,16 +95,16 @@ async function executeRun(
 
   try {
     assertWorkCanContinue(signal);
-    const response = await fetchFeed(lease.feedUrl, {
-      etag: lease.etag,
-      lastModified: lease.lastModified,
+    const response = await fetchFeed(source.feedUrl, {
+      etag: source.etag,
+      lastModified: source.lastModified,
     }, http);
 
     validators = response.validators;
     if (response.notModified) {
       result.notModified = true;
     } else {
-      await processFeedEntries(store, lease, result, response.feed, http, signal);
+      await processFeedEntries(store, source, result, response.feed, http, signal);
     }
   } catch (error) {
     result.status = "failed";
@@ -121,7 +113,7 @@ async function executeRun(
 
   result.errors = result.errors.slice(0, MAX_RUN_ERROR_COUNT);
   const successfulValidators = result.status === "succeeded" ? validators : null;
-  return store.finishRun(lease, result, successfulValidators);
+  return store.finishRun(source, result, successfulValidators);
 }
 
 export async function ingestPitchfork(
@@ -130,28 +122,10 @@ export async function ingestPitchfork(
 ): Promise<RunOutcome> {
   const signal = options.signal ?? AbortSignal.timeout(INGESTION_TIMING.maxWorkDurationMs);
   const http = { ...options.http, signal };
-  const lease = await store.acquireSource(PITCHFORK_SOURCE_KEY, INGESTION_TIMING.sourceLeaseSeconds);
-  if (!lease) {
-    return { status: "skipped", reason: "busy_or_disabled" };
+  const source = await store.getSource(PITCHFORK_SOURCE_KEY);
+  if (!source) {
+    return { status: "skipped", reason: "disabled" };
   }
 
-  let primaryFailure: IngestionError | undefined;
-  try {
-    const result = await executeRun(store, lease, signal, http);
-    primaryFailure = runFailure(result);
-    return result;
-  } catch (error) {
-    primaryFailure = toIngestionError(error);
-    throw primaryFailure;
-  } finally {
-    try {
-      await store.releaseSource(lease);
-    } catch (error) {
-      if (primaryFailure) {
-        primaryFailure.cleanupErrors.push(errorCode(error));
-        throw primaryFailure;
-      }
-      throw toIngestionError(error);
-    }
-  }
+  return executeRun(store, source, signal, http);
 }

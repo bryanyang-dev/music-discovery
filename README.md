@@ -2,8 +2,8 @@
 
 Fetch and parse Pitchfork Best New Tracks with a TypeScript AWS Lambda handler.
 The current handler logs and returns RSS data without database access. PostgreSQL
-storage and review-page enrichment are implemented separately for the next
-Supabase integration step; no remote database migration has been performed.
+storage and review-page enrichment are implemented separately. The initial schema
+has been migrated to Supabase; the handler is not yet connected to it.
 
 The latest local handler includes retries, deadline handling, and severity-based
 logging. It has not yet been uploaded to the current target, `musicRssFetcher`.
@@ -14,7 +14,7 @@ logging. It has not yet been uploaded to the current target, `musicRssFetcher`.
 apps/ingestion/src/handler.ts  RSS-only Lambda entry point
 apps/ingestion/src/local.ts    Local RSS and enriched-track previews
 apps/ingestion/src/run.ts      Database ingestion service, not wired to the handler
-apps/ingestion/src/timing.ts   Database ingestion work/lease limits
+apps/ingestion/src/timing.ts   Database ingestion work limit
 packages/rss                  HTTP, RSS parsing, review metadata extraction
 packages/db                   PostgreSQL schema, migrations, and persistence
 packages/shared               Shared contracts, source constants, and helpers
@@ -43,7 +43,7 @@ Existing commands:
 | `pnpm test:bundle` | Build and smoke-test the actual Lambda bundle |
 | `pnpm test:db` | Run real PostgreSQL tests when TEST_DATABASE_URL is provided |
 | `pnpm db:generate` | Generate SQL migrations locally from the schema |
-| `pnpm db:migrate` | Apply migrations to the configured database; requires authorization |
+| `pnpm db:migrate` | Apply migrations using Drizzle Kit; requires authorization |
 
 Tests use synthetic fixtures and mocked network/AWS calls. The separate database
 integration suite skips without TEST_DATABASE_URL and does not load `.env`.
@@ -110,7 +110,7 @@ For a manual console upload, `pnpm build:lambda` writes
 `dist/ingestion/index.cjs`, exporting `handler`. The bundle contains the RSS
 runtime dependencies; no `node_modules` upload is needed.
 
-## Next: Supabase
+## Supabase
 
 Keep runtime DATABASE_URL and migration DATABASE_MIGRATION_URL private, using
 `.env.example` as the template. The database package uses standard PostgreSQL and
@@ -118,13 +118,27 @@ Drizzle. Runtime connections use transaction pooling with prepared statements
 disabled; migrations use a direct or session-pooled connection. TLS verification
 is required. Schema generation is local; applying migrations is always explicit.
 
+`pnpm db:migrate` runs Drizzle Kit's built-in migration command with
+`drizzle.migrate.config.ts`, reading `.env`. For the existing Supabase CA:
+
+```sh
+NODE_EXTRA_CA_CERTS="$PWD/certs/prod-ca-2021.crt" pnpm db:migrate
+```
+
+`pnpm db:migrate:local` reads `.env.local` and explicitly permits no TLS only for
+loopback connections. Generation uses `drizzle.config.ts` and needs no credentials.
+Drizzle Kit owns migration execution, connection lifecycle and error reporting.
+
 The current handler does not call `ingestPitchfork` or write to PostgreSQL. Setting
 environment variables or running `pnpm ingest` does not enable database ingestion.
-Supabase provisioning, migration review, role/RLS setup, integration testing, and
-wiring the service into Lambda are the next stage.
+The schema and Pitchfork source seed are deployed with RLS enabled. Runtime-role
+permissions/RLS policies, integration testing, and wiring the service into Lambda
+remain to be completed.
 
-The existing legacy feeds/articles schema and migration are retained to preserve
-the database history. Do not delete or regenerate migration history as cleanup.
+The initial migration creates only `ingestion_sources`, `tracks`, and
+`ingestion_runs`, and seeds the Pitchfork source. The unused feeds/articles schema
+was removed before any migrations were applied. Once migrations have been applied,
+preserve their history and generate new migrations for subsequent schema changes.
 
 - [Database ingestion specification](docs/ingestion-spec.md)
 - [Current RSS and future database operations](docs/operations.md)

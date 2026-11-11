@@ -7,6 +7,4 @@ export const DATABASE_POLICY = {
   statementTimeoutMs: 8_000,
   lockTimeoutMs: 2_000,
   operationTimeoutMs: 15_000,
-  minimumLeaseSeconds: 30,
-  maximumLeaseSeconds: 600,
 } as const;

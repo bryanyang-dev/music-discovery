@@ -8,8 +8,8 @@ export type ErrorCode =
   | "UNSAFE_URL" | "HTTP_ERROR" | "NETWORK_ERROR" | "REQUEST_TIMEOUT"
   | "RESPONSE_TOO_LARGE" | "UNSUPPORTED_ENCODING" | "INVALID_FEED"
   | "INVALID_ENTRY" | "MISSING_METADATA" | "INVALID_METADATA"
-  | "DATABASE_ERROR" | "SOURCE_NOT_FOUND" | "SOURCE_BUSY" | "LEASE_LOST"
-  | "RUN_DEADLINE" | "INTERRUPTED_RUN";
+  | "DATABASE_ERROR" | "SOURCE_NOT_FOUND"
+  | "RUN_DEADLINE";
 
 export class IngestionError extends Error {
   readonly code: ErrorCode;
@@ -61,10 +61,6 @@ export interface SourceRecord {
   lastModified: string | null;
 }
 
-export interface SourceLease extends SourceRecord {
-  token: string;
-}
-
 export interface RunCounts {
   found: number;
   inserted: number;
@@ -92,13 +88,12 @@ export interface CacheValidators {
 }
 
 export interface IngestionStore {
-  acquireSource(sourceKey: string, leaseSeconds: number): Promise<SourceLease | null>;
-  beginRun(lease: SourceLease): Promise<string>;
-  recordDiscovery(lease: SourceLease, runId: string, found: number, errors: RunIssue[]): Promise<void>;
-  rejectEntry(lease: SourceLease, runId: string, issue: RunIssue): Promise<void>;
-  upsertTrack(lease: SourceLease, runId: string, track: TrackInput): Promise<"inserted" | "updated" | "unchanged">;
-  finishRun(lease: SourceLease, result: RunResult, validators: CacheValidators | null): Promise<RunResult>;
-  releaseSource(lease: SourceLease): Promise<void>;
+  getSource(sourceKey: string): Promise<SourceRecord | null>;
+  beginRun(source: SourceRecord): Promise<string>;
+  recordDiscovery(source: SourceRecord, runId: string, errors: RunIssue[]): Promise<void>;
+  rejectEntry(source: SourceRecord, runId: string, issue: RunIssue): Promise<void>;
+  upsertTrack(source: SourceRecord, runId: string, track: TrackInput): Promise<"inserted" | "updated" | "unchanged">;
+  finishRun(source: SourceRecord, result: RunResult, validators: CacheValidators | null): Promise<RunResult>;
 }
 
 export function httpUrl(value: string, base?: string): string {

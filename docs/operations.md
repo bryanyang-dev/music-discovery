@@ -43,11 +43,10 @@ when Supabase is configured and the handler is wired to the ingestion service.
 Run in a trusted private SQL client:
 
 ```sql
-SELECT key, enabled, last_attempt_at, last_success_at, lease_expires_at
+SELECT key, enabled, last_attempt_at, last_success_at
 FROM ingestion_sources;
 
-SELECT started_at, finished_at, status, found, inserted, updated, unchanged,
-       rejected, not_modified, errors
+SELECT started_at, finished_at, status, not_modified, errors
 FROM ingestion_runs
 ORDER BY started_at DESC
 LIMIT 24;
@@ -69,14 +68,14 @@ success time but does not pretend the individual tracks were observed again.
 | succeeded | All current valid entries processed, empty feed, or HTTP 304. |
 | partial_failure | Some entries/pages were rejected; valid tracks committed. Inspect issue codes and safe source URLs. Cache validators are cleared. |
 | failed | Feed/database/network/deadline prevented completion. Existing commits remain. Cache validators clear when finalization succeeds. |
-| skipped | Source disabled or leased by another invocation. No run row is created. Persistent skips need lease/freshness investigation. |
-| running for too long | Worker may have been killed or finalization failed. On next successful lease acquisition, the row becomes failed/INTERRUPTED_RUN. |
+| skipped | Source disabled. No run row is created. |
+| running for too long | Worker may have been killed or finalization failed. Inspect manually; later runs leave it unchanged. |
 
-The service stops before Lambda's hard timeout when possible. Track writes and
-their committed-operation counters are transactional checkpoints. Abrupt termination
-can still prevent final status/error records or leave entries unprocessed. The lease is 360 seconds;
-never blindly clear it while an invocation may still be running. A stale token is
-fenced from future writes once a successor takes over.
+The service bounds work before Lambda's hard timeout when configured accordingly.
+Track writes commit individually; counts exist only in the returned result.
+There is no application-level source lock. Overlapping executions can overwrite
+track metadata and cache state in commit order. The future template limits its
+function concurrency to one; other invocation paths must be considered separately.
 
 ## Failure codes
 
@@ -94,11 +93,8 @@ fenced from future writes once a successor takes over.
   privately before raising limits.
 - DATABASE_ERROR: connectivity, role, schema or write problem. Error details are
   intentionally not logged; consult private database diagnostics.
-- LEASE_LOST: old worker cannot commit after expiry/takeover. Check unusually long
-  execution, clock/deadline configuration and duplicate invocations.
 - RUN_DEADLINE: remaining run budget exhausted. Committed tracks remain. Inspect
-  slow requests/DB behavior before increasing Lambda timeout/lease bounds.
-- INTERRUPTED_RUN: next acquisition detected an unfinished previous invocation.
+  slow requests/DB behavior before increasing work budget or Lambda timeout.
 
 ## Recovery
 
@@ -114,9 +110,9 @@ After changing parsing logic, clear the source's HTTP validators in a reviewed
 database change so a 304 does not prevent reprocessing the current feed. Clearing
 the validators is not a migration and is not done automatically here.
 
-Failed database finalization can leave a running row and old validators. The next
-successful acquisition closes that row and clears validators before fetching.
-Do not rewrite old run history or reset first-seen timestamps during recovery.
+Run creation clears persisted validators before work, so an interrupted run is
+retried with a full feed fetch. Failed finalization can leave a running row; later
+runs do not close it automatically. Do not reset first-seen timestamps during recovery.
 
 ## Alerts, logs and queues
 

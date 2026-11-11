@@ -116,11 +116,11 @@ on-failure destination intentionally replaces a separate `DeadLetterConfig`;
 configuring both would duplicate failure notifications.
 
 Both delivery layers are **at least once**. Reserved concurrency one limits this
-function's simultaneous executions. The application separately acquires a source
-lease and fences database writes with its token and expiry, so stale workers cannot
-commit after losing ownership. A busy or disabled source returns `skipped`.
-Neither mechanism deduplicates delivered events; database uniqueness and idempotent
-writes remain necessary. Track records commit individually, so earlier successful
+function's simultaneous executions. The application has no source leases or
+ownership tokens; other invocation paths can overlap. Disabled sources return
+`skipped`. Database uniqueness prevents duplicate source/URL rows, but overlapping
+runs can overwrite metadata and cache state in commit order.
+Track records commit individually, so earlier successful
 records remain committed if later records are rejected or the run fails. Retries
 can revisit those records. The handler logs its completion status and throws a
 sanitized error code on `partial_failure` or `failed`, allowing Lambda retry and
@@ -138,7 +138,7 @@ The handler calls `console.log(JSON.stringify(record))` with `event:
 "ingestion_completed"`, `source: "pitchfork"`, `category: "best_new_track"` and
 `status: "succeeded" | "partial_failure" | "failed" | "skipped"`. Completed run
 records include `runId`, counts and `errors: [{code, sourceUrl}]`; early failures
-and lease-related skips may omit those fields. Lambda's configured text format
+and disabled-source skips may omit those fields. Lambda's configured text format
 adds a timestamp, request ID and level before the serialized JSON.
 [AWS documents this prefix](https://docs.aws.amazon.com/lambda/latest/dg/monitoring-cloudwatchlogs-logformat.html)
 and states that [JSON field patterns require a JSON-only event](https://docs.aws.amazon.com/cdk/api/v1/dotnet/api/Amazon.CDK.AWS.Logs.NamespaceDoc.html).
@@ -153,7 +153,7 @@ are needed.
 
 These alarms do not prove hourly freshness or detect silent no-op runs. Inspect
 application run records/latest successful ingestion, per-record rejections, source
-lease/skip outcomes, queue age and
+enabled/skip outcomes, queue age and
 logs. A future run-record freshness check needs an explicit application contract.
 Queue metrics are approximate; visible-message alarms may clear during inspection.
 

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
-import { and, eq, sql } from "drizzle-orm";
-import { IngestionError, PITCHFORK_FEED_URL, emptyCounts, type RunResult, type SourceLease, type TrackInput } from "@music-discovery/shared";
+import { and, eq } from "drizzle-orm";
+import { IngestionError, PITCHFORK_FEED_URL, emptyCounts, type RunResult, type TrackInput } from "@music-discovery/shared";
 import { connectDatabase } from "../src/index.ts";
 import { ingestionRuns, ingestionSources, tracks } from "../src/schema.ts";
 
@@ -45,20 +45,21 @@ test("Postgres upserts preserve IDs/first seen, classify changes, merge omission
 }, async () => {
   const state = await fixture();
   try {
-    const lease = await state.database.store.acquireSource(state.keys[0]!, 360);
-    const second = await state.database.store.acquireSource(state.keys[1]!, 360);
-    assert.ok(lease && second);
-    const runId = await state.database.store.beginRun(lease);
+    const source = await state.database.store.getSource(state.keys[0]!);
+    const second = await state.database.store.getSource(state.keys[1]!);
+    assert.ok(source && second);
+    const runId = await state.database.store.beginRun(source);
     const secondRun = await state.database.store.beginRun(second);
-    assert.equal(await state.database.store.upsertTrack(lease, runId, article), "inserted");
-    const [before] = await state.database.db.select().from(tracks).where(eq(tracks.sourceId, lease.id));
+    await assert.rejects(state.database.store.upsertTrack(second, runId, article));
+    assert.equal(await state.database.store.upsertTrack(source, runId, article), "inserted");
+    const [before] = await state.database.db.select().from(tracks).where(eq(tracks.sourceId, source.id));
     assert.ok(before);
-    assert.equal(await state.database.store.upsertTrack(lease, runId, article), "unchanged");
-    assert.equal(await state.database.store.upsertTrack(lease, runId, {
+    assert.equal(await state.database.store.upsertTrack(source, runId, article), "unchanged");
+    assert.equal(await state.database.store.upsertTrack(source, runId, {
       ...article, trackTitle: "Updated", summary: null, reviewAuthor: null, genres: [], labels: [],
     }), "updated");
     assert.equal(await state.database.store.upsertTrack(second, secondRun, article), "inserted");
-    const after = await state.database.db.select().from(tracks).where(eq(tracks.sourceId, lease.id));
+    const after = await state.database.db.select().from(tracks).where(eq(tracks.sourceId, source.id));
     assert.equal(after.length, 1);
     assert.equal(after[0]?.id, before.id);
     assert.equal(after[0]?.firstSeenAt.getTime(), before.firstSeenAt.getTime());
@@ -70,43 +71,28 @@ test("Postgres upserts preserve IDs/first seen, classify changes, merge omission
     assert.equal(other?.trackTitle, "Original");
   } finally { await state.cleanup(); }
 });
-test("two clients cannot acquire the same source; expired tokens cannot write or release a successor", {
+test("two workers can start independent runs for the same source without taking ownership", {
   skip: !connectionString,
 }, async () => {
   const state = await fixture();
   try {
-    const [first, concurrent] = await Promise.all([
-      state.database.store.acquireSource(state.keys[0]!, 360),
-      state.other.store.acquireSource(state.keys[0]!, 360),
-    ]);
-    const leases = [first, concurrent].filter((lease): lease is SourceLease => lease !== null);
-    assert.equal(leases.length, 1);
-    const old = leases[0]!;
-    const oldRun = await state.database.store.beginRun(old);
-    await state.database.store.recordDiscovery(old, oldRun, 1, []);
-    assert.equal(await state.database.store.upsertTrack(old, oldRun, article), "inserted");
-    await state.database.db.update(ingestionSources).set({
-      leaseExpiresAt: sql`clock_timestamp() - interval '1 second'`, etag: '"stale"',
-    }).where(eq(ingestionSources.id, old.id));
-    const successor = await state.other.store.acquireSource(state.keys[0]!, 360);
-    assert.ok(successor);
-    assert.notEqual(successor.token, old.token);
-    assert.equal(successor.etag, null);
-    const [interrupted] = await state.database.db.select().from(ingestionRuns).where(eq(ingestionRuns.id, oldRun));
-    assert.equal(interrupted?.status, "failed");
-    assert.equal(interrupted?.errors[0]?.code, "INTERRUPTED_RUN");
-    assert.equal(interrupted?.inserted, 1);
-    assert.equal(interrupted?.found, 1);
-    await assert.rejects(state.database.store.upsertTrack(old, oldRun, { ...article, trackTitle: "stale content" }),
-      (error) => error instanceof IngestionError && error.code === "LEASE_LOST");
-    await state.database.store.releaseSource(old);
-    assert.equal(await state.database.store.acquireSource(state.keys[0]!, 360), null);
-    const successorRun = await state.other.store.beginRun(successor);
-    assert.equal(await state.other.store.upsertTrack(successor, successorRun, article), "unchanged");
-    await assert.rejects(state.database.store.finishRun(old, successful(oldRun), { etag: '"wrong"', lastModified: null }));
-    const [current] = await state.database.db.select().from(ingestionSources).where(eq(ingestionSources.id, old.id));
-    assert.equal(current?.leaseToken, successor.token);
-    assert.equal(current?.etag, null);
+    await state.database.db.update(ingestionSources).set({ etag: '"old"' })
+      .where(eq(ingestionSources.id, state.sources[0]!.id));
+    const source = await state.database.store.getSource(state.keys[0]!);
+    assert.ok(source);
+    const firstRun = await state.database.store.beginRun(source);
+    const second = await state.other.store.getSource(state.keys[0]!);
+    assert.ok(second);
+    assert.equal(second.etag, null);
+    const secondRun = await state.other.store.beginRun(second);
+    assert.notEqual(firstRun, secondRun);
+    const [first] = await state.database.db.select().from(ingestionRuns)
+      .where(eq(ingestionRuns.id, firstRun));
+    assert.equal(first?.status, "running");
+    assert.equal(await state.database.store.upsertTrack(source, firstRun, article), "inserted");
+    assert.equal(await state.other.store.upsertTrack(second, secondRun, article), "unchanged");
+    await state.database.store.finishRun(source, successful(firstRun), null);
+    await state.other.store.finishRun(second, successful(secondRun), null);
   } finally { await state.cleanup(); }
 });
 test("run finalization and successful validators are atomic; partial failure preserves last success", {
@@ -114,48 +100,52 @@ test("run finalization and successful validators are atomic; partial failure pre
 }, async () => {
   const state = await fixture();
   try {
-    const lease = await state.database.store.acquireSource(state.keys[0]!, 360);
-    assert.ok(lease);
-    const runId = await state.database.store.beginRun(lease);
-    await state.database.store.recordDiscovery(lease, runId, 1, []);
-    await state.database.store.upsertTrack(lease, runId, article);
-    await state.database.store.finishRun(lease, successful(runId), { etag: '"good"', lastModified: "Tue, 10 Nov 2026 12:00:00 GMT" });
-    const [success] = await state.database.db.select().from(ingestionSources).where(eq(ingestionSources.id, lease.id));
+    const source = await state.database.store.getSource(state.keys[0]!);
+    assert.ok(source);
+    const runId = await state.database.store.beginRun(source);
+    await state.database.store.recordDiscovery(source, runId, []);
+    await state.database.store.upsertTrack(source, runId, article);
+    await state.database.store.finishRun(source, successful(runId), { etag: '"good"', lastModified: "Tue, 10 Nov 2026 12:00:00 GMT" });
+    const [success] = await state.database.db.select().from(ingestionSources).where(eq(ingestionSources.id, source.id));
     assert.equal(success?.etag, '"good"');
     assert.ok(success?.lastSuccessAt);
-    const partialRun = await state.database.store.beginRun(lease);
-    await state.database.store.recordDiscovery(lease, partialRun, 1, []);
-    await state.database.store.rejectEntry(lease, partialRun, { code: "MISSING_METADATA", sourceUrl: article.sourceUrl });
-    await state.database.store.finishRun(lease, {
+    const partialRun = await state.database.store.beginRun(source);
+    await state.database.store.recordDiscovery(source, partialRun, []);
+    await state.database.store.rejectEntry(source, partialRun, { code: "MISSING_METADATA", sourceUrl: article.sourceUrl });
+    await state.database.store.finishRun(source, {
       ...successful(partialRun), status: "partial_failure", inserted: 0, rejected: 1,
       errors: [{ code: "MISSING_METADATA", sourceUrl: article.sourceUrl }],
     }, null);
-    const [partial] = await state.database.db.select().from(ingestionSources).where(eq(ingestionSources.id, lease.id));
+    const [partial] = await state.database.db.select().from(ingestionSources).where(eq(ingestionSources.id, source.id));
     assert.equal(partial?.etag, null);
     assert.equal(partial?.lastSuccessAt?.getTime(), success.lastSuccessAt.getTime());
-    await assert.rejects(state.database.store.finishRun(lease, successful(randomUUID()), { etag: '"bad"', lastModified: null }));
-    const [afterRollback] = await state.database.db.select().from(ingestionSources).where(eq(ingestionSources.id, lease.id));
+    await assert.rejects(state.database.store.finishRun(source, successful(randomUUID()), { etag: '"bad"', lastModified: null }));
+    const [afterRollback] = await state.database.db.select().from(ingestionSources).where(eq(ingestionSources.id, source.id));
     assert.equal(afterRollback?.etag, null);
     const [savedRun] = await state.database.db.select().from(ingestionRuns).where(eq(ingestionRuns.id, partialRun));
     assert.equal(savedRun?.status, "partial_failure");
-    assert.equal(savedRun?.rejected, 1);
+    assert.equal(savedRun?.errors[0]?.code, "MISSING_METADATA");
+    await assert.rejects(state.database.store.upsertTrack(source, partialRun, article));
+    await assert.rejects(state.database.store.rejectEntry(source, partialRun, { code: "INVALID_ENTRY", sourceUrl: null }));
   } finally { await state.cleanup(); }
 });
-test("disabled sources do not acquire; direct duplicate source URLs violate uniqueness", {
+test("disabled sources are skipped; direct duplicate source URLs violate uniqueness", {
   skip: !connectionString,
 }, async () => {
   const state = await fixture();
   try {
     await state.database.db.update(ingestionSources).set({ enabled: false })
       .where(eq(ingestionSources.id, state.sources[0]!.id));
-    assert.equal(await state.database.store.acquireSource(state.keys[0]!, 360), null);
-    const lease = await state.database.store.acquireSource(state.keys[1]!, 360);
-    assert.ok(lease);
-    const runId = await state.database.store.beginRun(lease);
-    await state.database.store.upsertTrack(lease, runId, article);
-    await assert.rejects(state.database.db.insert(tracks).values({ ...article, sourceId: lease.id, metadataHash: "hash" }));
+    assert.equal(await state.database.store.getSource(state.keys[0]!), null);
+    await assert.rejects(state.database.store.getSource("missing-source"),
+      (error) => error instanceof IngestionError && error.code === "SOURCE_NOT_FOUND");
+    const source = await state.database.store.getSource(state.keys[1]!);
+    assert.ok(source);
+    const runId = await state.database.store.beginRun(source);
+    await state.database.store.upsertTrack(source, runId, article);
+    await assert.rejects(state.database.db.insert(tracks).values({ ...article, sourceId: source.id, metadataHash: "hash" }));
     assert.equal((await state.database.db.select().from(tracks).where(and(
-      eq(tracks.sourceId, lease.id), eq(tracks.sourceUrl, article.sourceUrl),
+      eq(tracks.sourceId, source.id), eq(tracks.sourceUrl, article.sourceUrl),
     ))).length, 1);
   } finally { await state.cleanup(); }
 });

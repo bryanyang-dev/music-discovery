@@ -1,34 +1,61 @@
-CREATE TABLE "feeds" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  "url" text NOT NULL,
-  "title" text NOT NULL,
-  "enabled" boolean DEFAULT true NOT NULL,
-  "last_checked_at" timestamp with time zone,
-  "last_success_at" timestamp with time zone,
-  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  CONSTRAINT "feeds_url_unique" UNIQUE("url")
+CREATE TABLE "ingestion_runs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"source_id" uuid NOT NULL,
+	"started_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"finished_at" timestamp with time zone,
+	"status" text DEFAULT 'running' NOT NULL,
+	"not_modified" boolean DEFAULT false NOT NULL,
+	"errors" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	CONSTRAINT "ingestion_runs_status_valid" CHECK ("ingestion_runs"."status" IN ('running', 'succeeded', 'partial_failure', 'failed'))
 );
 --> statement-breakpoint
-ALTER TABLE "feeds" ENABLE ROW LEVEL SECURITY;
---> statement-breakpoint
-CREATE TABLE "articles" (
-  "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-  "feed_id" uuid NOT NULL,
-  "source_key" text NOT NULL,
-  "guid" text,
-  "url" text,
-  "title" text NOT NULL,
-  "author" text,
-  "summary" text,
-  "published_at" timestamp with time zone,
-  "created_at" timestamp with time zone DEFAULT now() NOT NULL,
-  "updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-  CONSTRAINT "articles_feed_id_feeds_id_fk" FOREIGN KEY ("feed_id") REFERENCES "feeds"("id") ON DELETE cascade
+ALTER TABLE "ingestion_runs" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE TABLE "ingestion_sources" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"key" text NOT NULL,
+	"name" text DEFAULT 'pitchfork' NOT NULL,
+	"category" text DEFAULT 'best_new_track' NOT NULL,
+	"feed_url" text NOT NULL,
+	"enabled" boolean DEFAULT true NOT NULL,
+	"last_attempt_at" timestamp with time zone,
+	"last_success_at" timestamp with time zone,
+	"etag" text,
+	"last_modified" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "ingestion_sources_key_unique" UNIQUE("key")
 );
 --> statement-breakpoint
-ALTER TABLE "articles" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "ingestion_sources" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+CREATE TABLE "tracks" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"source_id" uuid NOT NULL,
+	"source_url" text NOT NULL,
+	"source_guid" text,
+	"track_title" text NOT NULL,
+	"artists" text[] NOT NULL,
+	"review_title" text,
+	"review_author" text,
+	"review_published_at" timestamp with time zone,
+	"summary" text,
+	"image_url" text,
+	"genres" text[] DEFAULT '{}'::text[] NOT NULL,
+	"labels" text[] DEFAULT '{}'::text[] NOT NULL,
+	"release_date" date,
+	"metadata_hash" text NOT NULL,
+	"first_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"last_seen_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "tracks_title_nonempty" CHECK (length(trim("tracks"."track_title")) > 0),
+	CONSTRAINT "tracks_artists_nonempty" CHECK (cardinality("tracks"."artists") > 0 AND array_position("tracks"."artists", NULL) IS NULL AND array_to_string("tracks"."artists", '') <> '')
+);
 --> statement-breakpoint
-CREATE UNIQUE INDEX "articles_feed_source_unique" ON "articles" ("feed_id", "source_key");
+ALTER TABLE "tracks" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
+ALTER TABLE "ingestion_runs" ADD CONSTRAINT "ingestion_runs_source_id_ingestion_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "public"."ingestion_sources"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "tracks" ADD CONSTRAINT "tracks_source_id_ingestion_sources_id_fk" FOREIGN KEY ("source_id") REFERENCES "public"."ingestion_sources"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "ingestion_runs_source_started_idx" ON "ingestion_runs" USING btree ("source_id","started_at" DESC NULLS LAST);--> statement-breakpoint
+CREATE UNIQUE INDEX "tracks_source_url_unique" ON "tracks" USING btree ("source_id","source_url");--> statement-breakpoint
+CREATE INDEX "tracks_review_published_at_idx" ON "tracks" USING btree ("review_published_at" DESC NULLS LAST);
 --> statement-breakpoint
-CREATE INDEX "articles_published_at_idx" ON "articles" ("published_at");
-
+INSERT INTO "ingestion_sources" ("key", "name", "category", "feed_url")
+VALUES ('pitchfork_best_new_tracks', 'pitchfork', 'best_new_track', 'https://pitchfork.com/feed/reviews/best/tracks/rss')
+ON CONFLICT ("key") DO NOTHING;

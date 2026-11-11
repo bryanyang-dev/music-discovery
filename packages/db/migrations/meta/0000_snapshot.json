@@ -1,11 +1,11 @@
 {
-  "id": "d9815cb4-60b1-41b3-90d5-56dcbd24dc12",
+  "id": "837cbb87-2d83-4d5d-8d2c-0f625bd8456d",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.feeds": {
-      "name": "feeds",
+    "public.ingestion_runs": {
+      "name": "ingestion_runs",
       "schema": "",
       "columns": {
         "id": {
@@ -15,14 +15,129 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "url": {
-          "name": "url",
+        "source_id": {
+          "name": "source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "not_modified": {
+          "name": "not_modified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "errors": {
+          "name": "errors",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        }
+      },
+      "indexes": {
+        "ingestion_runs_source_started_idx": {
+          "name": "ingestion_runs_source_started_idx",
+          "columns": [
+            {
+              "expression": "source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ingestion_runs_source_id_ingestion_sources_id_fk": {
+          "name": "ingestion_runs_source_id_ingestion_sources_id_fk",
+          "tableFrom": "ingestion_runs",
+          "tableTo": "ingestion_sources",
+          "columnsFrom": [
+            "source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ingestion_runs_status_valid": {
+          "name": "ingestion_runs_status_valid",
+          "value": "\"ingestion_runs\".\"status\" IN ('running', 'succeeded', 'partial_failure', 'failed')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.ingestion_sources": {
+      "name": "ingestion_sources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "key": {
+          "name": "key",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "title": {
-          "name": "title",
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pitchfork'"
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'best_new_track'"
+        },
+        "feed_url": {
+          "name": "feed_url",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -34,8 +149,8 @@
           "notNull": true,
           "default": true
         },
-        "last_checked_at": {
-          "name": "last_checked_at",
+        "last_attempt_at": {
+          "name": "last_attempt_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -43,6 +158,18 @@
         "last_success_at": {
           "name": "last_success_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "etag": {
+          "name": "etag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_modified": {
+          "name": "last_modified",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -58,11 +185,11 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
-        "feeds_url_unique": {
-          "name": "feeds_url_unique",
+        "ingestion_sources_key_unique": {
+          "name": "ingestion_sources_key_unique",
           "nullsNotDistinct": false,
           "columns": [
-            "url"
+            "key"
           ]
         }
       },
@@ -70,8 +197,8 @@
       "checkConstraints": {},
       "isRLSEnabled": true
     },
-    "public.articles": {
-      "name": "articles",
+    "public.tracks": {
+      "name": "tracks",
       "schema": "",
       "columns": {
         "id": {
@@ -81,39 +208,51 @@
           "notNull": true,
           "default": "gen_random_uuid()"
         },
-        "feed_id": {
-          "name": "feed_id",
+        "source_id": {
+          "name": "source_id",
           "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
-        "source_key": {
-          "name": "source_key",
+        "source_url": {
+          "name": "source_url",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "guid": {
-          "name": "guid",
+        "source_guid": {
+          "name": "source_guid",
           "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "url": {
-          "name": "url",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "title": {
-          "name": "title",
+        "track_title": {
+          "name": "track_title",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "author": {
-          "name": "author",
+        "artists": {
+          "name": "artists",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "review_title": {
+          "name": "review_title",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_author": {
+          "name": "review_author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_published_at": {
+          "name": "review_published_at",
+          "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
         },
@@ -123,14 +262,47 @@
           "primaryKey": false,
           "notNull": false
         },
-        "published_at": {
-          "name": "published_at",
-          "type": "timestamp with time zone",
+        "image_url": {
+          "name": "image_url",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
-        "created_at": {
-          "name": "created_at",
+        "genres": {
+          "name": "genres",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "labels": {
+          "name": "labels",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "release_date": {
+          "name": "release_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata_hash": {
+          "name": "metadata_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": true,
@@ -145,17 +317,17 @@
         }
       },
       "indexes": {
-        "articles_feed_source_unique": {
-          "name": "articles_feed_source_unique",
+        "tracks_source_url_unique": {
+          "name": "tracks_source_url_unique",
           "columns": [
             {
-              "expression": "feed_id",
+              "expression": "source_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
             },
             {
-              "expression": "source_key",
+              "expression": "source_url",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -166,13 +338,13 @@
           "method": "btree",
           "with": {}
         },
-        "articles_published_at_idx": {
-          "name": "articles_published_at_idx",
+        "tracks_review_published_at_idx": {
+          "name": "tracks_review_published_at_idx",
           "columns": [
             {
-              "expression": "published_at",
+              "expression": "review_published_at",
               "isExpression": false,
-              "asc": true,
+              "asc": false,
               "nulls": "last"
             }
           ],
@@ -183,24 +355,33 @@
         }
       },
       "foreignKeys": {
-        "articles_feed_id_feeds_id_fk": {
-          "name": "articles_feed_id_feeds_id_fk",
-          "tableFrom": "articles",
-          "tableTo": "feeds",
+        "tracks_source_id_ingestion_sources_id_fk": {
+          "name": "tracks_source_id_ingestion_sources_id_fk",
+          "tableFrom": "tracks",
+          "tableTo": "ingestion_sources",
           "columnsFrom": [
-            "feed_id"
+            "source_id"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "no action",
           "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "tracks_title_nonempty": {
+          "name": "tracks_title_nonempty",
+          "value": "length(trim(\"tracks\".\"track_title\")) > 0"
+        },
+        "tracks_artists_nonempty": {
+          "name": "tracks_artists_nonempty",
+          "value": "cardinality(\"tracks\".\"artists\") > 0 AND array_position(\"tracks\".\"artists\", NULL) IS NULL AND array_to_string(\"tracks\".\"artists\", '') <> ''"
+        }
+      },
       "isRLSEnabled": true
     }
   },
