@@ -1,17 +1,4 @@
-import { createHash } from "node:crypto";
-import { IngestionError } from "./errors.ts";
-
-export const PITCHFORK_FEED_URL = "https://pitchfork.com/feed/reviews/best/tracks/rss";
-export const PITCHFORK_SOURCE_KEY = "pitchfork_best_new_tracks";
-
-export function httpUrl(value: string, base?: string): string {
-  const url = new URL(value, base);
-  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) {
-    throw new IngestionError("UNSAFE_URL");
-  }
-  url.hash = "";
-  return url.href;
-}
+import { httpUrl, IngestionError } from "@music-discovery/shared";
 
 export function pitchforkUrl(value: string, kind: "feed" | "review" | "artist" = "review", base?: string): string {
   let url: URL;
@@ -29,7 +16,7 @@ export function pitchforkUrl(value: string, kind: "feed" | "review" | "artist" =
   }
   let validPath: boolean;
   if (kind === "feed") {
-    validPath = url.pathname.replace(/\/$/, "") === "/feed/reviews/best/tracks/rss";
+    validPath = /^\/feed\/[^?#]+$/.test(url.pathname);
   } else if (kind === "artist") {
     validPath = /^\/artists\/[^/]+\/$/.test(url.pathname);
   } else {
@@ -43,21 +30,5 @@ export function pitchforkUrl(value: string, kind: "feed" | "review" | "artist" =
       url.searchParams.delete(key);
     }
   }
-  if (kind === "feed" && url.search) {
-    throw new IngestionError("UNSAFE_URL");
-  }
   return url.href;
-}
-
-export function safeLogUrl(value: string): string | null {
-  try {
-    const url = new URL(pitchforkUrl(value));
-    return url.origin + url.pathname;
-  } catch {
-    return null;
-  }
-}
-
-export function sourceKey(identity: string): string {
-  return createHash("sha256").update(identity).digest("hex");
 }

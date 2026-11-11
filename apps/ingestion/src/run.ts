@@ -3,7 +3,7 @@ import {
   errorCode,
   IngestionError,
   MAX_RUN_ERROR_COUNT,
-  PITCHFORK_SOURCE_KEY,
+  validateSourceKey,
   safeLogUrl,
   toIngestionError,
   type CacheValidators,
@@ -13,9 +13,9 @@ import {
   type TrackInput,
 } from "@music-discovery/shared";
 import {
-  extractTrack,
-  fetchFeed,
-  requestPitchfork,
+  getSourceAdapter,
+  type FeedFetcher,
+  type SourceAdapter,
   type HttpOptions,
   type ParsedFeed,
 } from "@music-discovery/rss";
@@ -26,7 +26,8 @@ export type RunOutcome = RunResult | { status: "skipped"; reason: "disabled" };
 export interface IngestionOptions {
   signal?: AbortSignal;
   http?: HttpOptions;
-  fetch?: typeof fetchFeed;
+  fetch?: FeedFetcher;
+  wrapFetch?: (fetch: FeedFetcher) => FeedFetcher;
   onFeedParsed?: (feed: ParsedFeed) => void;
   onTrackExtracted?: (track: TrackInput) => void;
 }
@@ -38,6 +39,7 @@ async function processFeedEntries(
   feed: ParsedFeed,
   http: HttpOptions,
   onTrackExtracted: (track: TrackInput) => void,
+  adapter: SourceAdapter,
 ): Promise<void> {
   result.found = feed.found;
   result.rejected = feed.errors.length;
@@ -48,8 +50,7 @@ async function processFeedEntries(
     let track;
 
     try {
-      const page = await requestPitchfork(entry.sourceUrl, "review", {}, http);
-      track = extractTrack(entry, page.body, page.url);
+      track = await adapter.extractTrack(entry, http);
     } catch (error) {
       if (errorCode(error) === "RUN_DEADLINE") {
         throw error;
@@ -79,9 +80,10 @@ async function executeRun(
   store: IngestionStore,
   source: SourceRecord,
   http: HttpOptions,
-  fetch: typeof fetchFeed,
+  fetch: FeedFetcher,
   onFeedParsed: (feed: ParsedFeed) => void,
   onTrackExtracted: (track: TrackInput) => void,
+  adapter: SourceAdapter,
 ): Promise<RunResult> {
   const runId = await store.beginRun(source);
   const result: RunResult = {
@@ -105,7 +107,7 @@ async function executeRun(
       result.notModified = true;
     } else {
       onFeedParsed(response.feed);
-      await processFeedEntries(store, source, result, response.feed, http, onTrackExtracted);
+      await processFeedEntries(store, source, result, response.feed, http, onTrackExtracted, adapter);
     }
   } catch (error) {
     result.status = "failed";
@@ -125,23 +127,27 @@ async function executeRun(
   }
 }
 
-export async function ingestPitchfork(
+export async function ingestSource(
   store: IngestionStore,
+  sourceKey: string,
   options: IngestionOptions = {},
 ): Promise<RunOutcome> {
   const signal = options.signal ?? AbortSignal.timeout(INGESTION_TIMING.maxWorkDurationMs);
   // HTTP and database operations own cancellation; finalization uses its cleanup budget.
   const http = { ...options.http, signal };
-  const source = await store.getSource(PITCHFORK_SOURCE_KEY);
+  const source = await store.getSource(validateSourceKey(sourceKey));
   if (!source) {
     return { status: "skipped", reason: "disabled" };
   }
 
+  const adapter = getSourceAdapter(source);
   const onFeedParsed = options.onFeedParsed ?? ((feed: ParsedFeed) => {
     console.log(JSON.stringify({ event: "feed_parsed", level: "INFO", feed }));
   });
   const onTrackExtracted = options.onTrackExtracted ?? ((track: TrackInput) => {
     console.log(JSON.stringify({ event: "track_extracted", level: "INFO", track }));
   });
-  return executeRun(store, source, http, options.fetch ?? fetchFeed, onFeedParsed, onTrackExtracted);
+  const fetch = options.fetch ?? adapter.fetchFeed;
+  return executeRun(store, source, http, options.wrapFetch ? options.wrapFetch(fetch) : fetch,
+    onFeedParsed, onTrackExtracted, adapter);
 }

@@ -48,6 +48,8 @@ Before any future deployment, review these gaps against the current application:
 
 - Plan how to adopt or replace the existing function; deploying this template alone
   creates another function and does not capture manual configuration.
+- The retained Scheduler payload lacks the required `sourceKey`; choose a
+  registered source key and update that payload before deploying this design.
 - The template does not set `NODE_EXTRA_CA_CERTS`. Add trusted CA configuration and
   include `prod-ca-2021.crt` in its S3 artifact before using this database setup.
 - Track upserts are enabled in application code; verify hosted writes and runtime

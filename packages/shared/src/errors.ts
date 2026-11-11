@@ -1,12 +1,12 @@
 // Messages are fixed application text; never interpolate URLs, SQL or driver messages.
 export const INGESTION_ERROR_MESSAGES = {
-  UNSAFE_URL: "The URL is not an allowed Pitchfork URL or contains credentials.",
-  HTTP_ERROR: "Pitchfork returned an unsuccessful HTTP response.",
-  NETWORK_ERROR: "The request to Pitchfork failed due to a network error.",
-  REQUEST_TIMEOUT: "The request to Pitchfork exceeded its time limit.",
+  UNSAFE_URL: "The URL is not allowed by the selected source policy or contains credentials.",
+  HTTP_ERROR: "The source returned an unsuccessful HTTP response.",
+  NETWORK_ERROR: "The request to the source failed due to a network error.",
+  REQUEST_TIMEOUT: "The request to the source exceeded its time limit.",
   RESPONSE_TOO_LARGE: "The response exceeded the allowed decompressed size.",
   UNSUPPORTED_ENCODING: "The feed or response uses an unsupported text encoding.",
-  INVALID_FEED: "The response is not a valid Pitchfork Best New Tracks RSS feed.",
+  INVALID_FEED: "The response is not a valid RSS feed for the selected source.",
   INVALID_ENTRY: "The feed entry or track is missing required fields or contains invalid values.",
   MISSING_METADATA: "The review is missing the track title or artist metadata.",
   INVALID_METADATA: "The review metadata is invalid or does not match this track review.",
@@ -20,7 +20,10 @@ export const INGESTION_ERROR_MESSAGES = {
   DATABASE_CONNECTION_ERROR: "The database connection failed or was closed. Check the host, port, database availability and network access.",
   DATABASE_TIMEOUT: "A database connection, query or lock exceeded its time limit, or the server canceled the query.",
   DATABASE_SCHEMA_ERROR: "The configured database, schema, table or column does not exist. Check the database target and applied migrations.",
-  SOURCE_NOT_FOUND: "The Pitchfork ingestion source is missing from the database. Check the source seed migration.",
+  SOURCE_NOT_FOUND: "The requested ingestion source is missing from the database. Check its registration.",
+  INVALID_SOURCE: "The source configuration or requested source key is invalid.",
+  UNSUPPORTED_SOURCE: "No ingestion adapter supports this source name and category.",
+  SOURCE_ALREADY_EXISTS: "An ingestion source with this key is already registered.",
   RUN_DEADLINE: "The ingestion work deadline was reached; processing stopped to leave time for cleanup.",
 } as const;
 

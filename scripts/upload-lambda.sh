@@ -86,4 +86,4 @@ aws lambda update-function-code \
 
 aws lambda wait function-updated-v2 \
   --function-name "$functionName" "${awsOptions[@]}"
-echo "Upload completed. Test the function in the Lambda console with an empty JSON event: {}"
+echo "Upload completed. Test the function in the Lambda console with a registered sourceKey (see README)."

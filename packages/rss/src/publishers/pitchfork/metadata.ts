@@ -1,5 +1,7 @@
-import { IngestionError, pitchforkUrl, type FeedEntry, type TrackInput } from "@music-discovery/shared";
-import { attribute, imageUrl, plainText, unquoteTitle, validDate } from "./text.ts";
+import { IngestionError, type FeedEntry, type TrackInput } from "@music-discovery/shared";
+import { attribute, imageUrl, plainText, unquoteTitle, validDate } from "../../text.ts";
+
+import { pitchforkUrl } from "./urls.ts";
 
 const MAX_STRUCTURED_NODE_COUNT = 1_000;
 const ARTIST_LINK_CLASS_PATTERN = /\bSplitScreenContentHeaderArtistLink(?:-|\b)/;
@@ -169,7 +171,7 @@ function selectReview(html: string, acceptedUrls: string[]): JsonObject {
   throw new IngestionError("INVALID_METADATA");
 }
 
-export function extractTrack(entry: FeedEntry, html: string, pageUrl = entry.sourceUrl): TrackInput {
+export function extractPitchforkTrack(entry: FeedEntry, html: string, pageUrl = entry.sourceUrl): TrackInput {
   const finalUrl = pitchforkUrl(pageUrl);
   const canonicalUrl = canonicalReviewUrl(html, finalUrl);
   const review = selectReview(html, [canonicalUrl, finalUrl]);

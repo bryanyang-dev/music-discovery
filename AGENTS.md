@@ -55,6 +55,19 @@ Guidelines:
 
 The goal is to become more effective at working in this repository with every completed task.
 
+## Naming
+
+- Choose filenames that describe both the subject and the file's specific role.
+  Prefer `source-validation.ts` over a bare plural such as `sources.ts` for validation
+  helpers. Avoid vague names such as `utils.ts` or `helpers.ts` for focused behavior.
+- Name dedicated CLI entry points `<action>-<entity>.cli.ts` (for example,
+  `add-source.cli.ts`). Keep CLI execution and terminal output separate from
+  reusable registration/workflow logic in a separately named module.
+- Use `.interface.ts` for files dedicated to behavioral contracts and name concrete
+  implementations for their backing technology (for example, `postgres-ingestion-store.ts`).
+  Keep data shapes in `models.ts`; internal modules import their owners directly,
+  while package consumers use the public `index.ts` exports.
+
 ## Priorities
 
 - Follow KISS (Keep It Simple, Stupid): choose the simplest solution that meets current
@@ -71,11 +84,19 @@ The goal is to become more effective at working in this repository with every co
   package and use deliberate public interfaces across package boundaries.
 - Keep database connection/deadline/shutdown handling in `packages/db/src/client.ts`
   and ingestion queries in `postgres-ingestion-store.ts`. Route queries through the bounded
-  transaction helper; keep `index.ts` focused on public exports and wiring.
-- Use `.interface.ts` for files dedicated to behavioral contracts and name concrete
-  implementations for their backing technology (for example, `postgres-ingestion-store.ts`).
-  Keep data shapes in `models.ts`; internal modules import their owners directly,
-  while package consumers use the public `index.ts` exports.
+  transaction helper and its named `query` executor so each statement has paired
+  request/response logs. Add response fields deliberately through the logging
+  sanitizer's allowlist, preserving redaction and size limits. Keep `index.ts`
+  focused on public exports and wiring.
+- Resolve invocation source keys through the database. Select publisher adapters
+  using the stored name/category, and validate registrations with that adapter;
+  adding a source row does not establish URL or metadata support for a new publisher.
+- Require `sourceKey` in live ingestion events/commands and load feed URLs from
+  Postgres, including live previews. Keep feed URL examples in seeds/tests/docs,
+  not runtime constants; publisher URL allowlists remain adapter-owned validation.
+- Keep publisher constants, URL policies, feed parsing and review extraction under
+  `packages/rss/src/publishers/<publisher>/`. Keep `shared` publisher-neutral and
+  metadata hashing with the database merge logic; name public publisher APIs explicitly.
 - Preserve primary failures when cleanup fails. Bound cleanup, make cancellation
   ownership explicit, and never expose secrets in logs or errors.
 - Keep changes focused. Add regression tests for affected boundaries and failure paths;

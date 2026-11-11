@@ -1,9 +1,10 @@
 # Music discovery
 
-A TypeScript AWS Lambda fetches Pitchfork Best New Tracks, enriches entries from
+A TypeScript AWS Lambda fetches a selected registered RSS source, enriches entries from
 review pages, logs parsed metadata, and upserts tracks into Supabase alongside
 source/run records. Results report inserted, updated, unchanged and rejected counts.
 Successful runs save feed validators; unchanged feeds skip review fetches and writes.
+Pitchfork Best New Tracks is currently the only implemented publisher adapter.
 
 ## Project structure
 
@@ -15,26 +16,34 @@ apps/ingestion/
   src/
     handler.ts                        Entry point for ingestion lambda
     run.ts                            Feed enrichment and track persistence workflow
-    local.ts                          Local handler and read-only preview commands
+    local.ts                          Explicit-source CLI and offline fixture preview
+    preview.ts                        Read-only preview of a database-configured source
+    add-source.cli.ts                 Entry point for the local source registration command
+    source-registration.ts            Registration argument validation and lifecycle
     timing.ts                         Overall work and cleanup budgets
   test/                               Handler, workflow, timing and bundle tests
 packages/
   shared/
     src/
       ingestion-store.interface.ts    IngestionStore behavioral contract only
+      source-registry.interface.ts    Source registration contract
+      source-validation.ts            Source key/configuration validation
       models.ts                       Feed, track, source and run data shapes
       errors.ts                       Application error codes and safe messages
-      pitchfork.ts                    Source constants, URL rules and identity hashing
+      urls.ts                         Publisher-neutral URL validation and log sanitization
       index.ts                        Public exports
     test/
   db/
     src/
       client.ts                       Connections, bounded transactions and shutdown
       postgres-ingestion-store.ts     PostgreSQL implementation of IngestionStore
+      postgres-source-registry.ts     Insert-only source registration
       schema.ts                       Drizzle tables and constraints
-      merge.ts                        Metadata merging and hashing
+      merge.ts                        Metadata merging and SHA-256 hashing
       connection.ts                   Connection URL and TLS validation
       deadline.ts                     Database operation deadlines and cancellation
+      database-logging.ts             Sanitized database request/response pairs
+      database-response-sanitization.ts  Allowed response fields, redaction and log limits
       errors.ts                       Driver error classification
       policy.ts                       Database limits
       index.ts                        connectDatabase wiring and public exports
@@ -42,17 +51,81 @@ packages/
     test/                             Unit tests and separate PostgreSQL integration tests
   rss/
     src/
-      http.ts                         Validated HTTP requests and retries
+      models.ts                       HTTP options/responses and parsed feed data
       http-policy.ts                  HTTP timeout, retry and response-size limits
-      metadata.ts                     Review-page track extraction
       text.ts                         Text and date parsing helpers
-      index.ts                        RSS parsing, feed fetching and public exports
+      source-adapter.interface.ts     Source fetching/enrichment contract
+      source-adapters.ts              Publisher adapter selection and validation
+      publishers/pitchfork/
+        adapter.ts                    Pitchfork implementation of SourceAdapter
+        urls.ts                       Pitchfork URL allowlist and normalization
+        feed.ts                       Best New Tracks RSS parsing and fetching
+        http.ts                       Validated Pitchfork HTTP requests and retries
+        metadata.ts                   Review-page artist and track extraction
+      index.ts                        Public exports
     test/fixtures/                    Synthetic RSS and review HTML fixtures
 scripts/                              Lambda upload script and mocked-upload tests
 infra/                                Undeployed CloudFormation design and wiring tests
 docs/                                 Specification, operations and timing guides
 certs/                                Public database CA certificate bundled with Lambda
 ```
+
+## Selecting and registering sources
+
+Pass a registered source key in the Lambda event:
+
+```json
+{ "sourceKey": "pitchfork_best_new_tracks" }
+```
+
+Each invocation follows this flow:
+
+1. Read the required `sourceKey` from the Lambda event.
+2. Load the source's feed URL, publisher `name`, `category`, enabled state and cache
+   validators from Postgres, then select a compatible publisher adapter.
+3. Fetch that stored URL and extract tracks using the selected adapter.
+4. Upsert tracks into the database; new tracks are inserted and existing tracks
+   retain the current metadata merge/update behavior.
+
+Feed URLs are configuration in `ingestion_sources.feed_url`, with no runtime URL
+constant or default source. Missing/invalid keys fail before connecting. Unknown
+keys fail with `SOURCE_NOT_FOUND`, and disabled sources skip. Event-supplied URLs
+are ignored. Completion logs include `sourceKey`. Update existing console test
+payloads and scheduled events to include a registered key before using this code.
+
+Local ingestion accepts the same selection:
+
+```sh
+pnpm ingest --source pitchfork_best_new_tracks
+```
+
+Register a source using this database-writing command, after explicitly authorizing
+it for the database selected by your local `DATABASE_URL`:
+
+```sh
+pnpm sources:add --key pitchfork_copy --name pitchfork --category best_new_track --feed-url https://pitchfork.com/feed/reviews/best/tracks/rss
+```
+
+The command loads `.env` if present, validates arguments and adapter compatibility,
+then inserts an enabled source with empty validators. Duplicate keys are rejected;
+existing configuration and cache state are preserved. It does not fetch the feed,
+ingest tracks or create a schedule. The runtime database role needs INSERT access
+and an appropriate RLS policy on `ingestion_sources`. Use
+`pnpm sources:add --help` for syntax without database access. Set `NODE_EXTRA_CA_CERTS`
+as described below when your database requires the bundled CA.
+
+Supported publisher/category: `pitchfork` / `best_new_track`. Its feed URL comes
+from the source row; the adapter accepts HTTPS Pitchfork URLs under `/feed/` and
+validates that the fetched content is a Best New Tracks feed. Registering another key for that feed creates independent
+source/run/track records. A new publisher needs its own tested adapter for URL
+validation, parsing and artist/title extraction; registration alone does not make
+an arbitrary RSS feed compatible. A second publisher adapter is pending selection
+of its feed URL.
+
+`pnpm ingest:preview --source <key>` loads the same source row and previews the
+current feed without writing source/run/track records. It loads `.env`, requires
+read-only database access and fetches unconditionally. `pnpm ingest:fixture` uses
+local synthetic Pitchfork files and needs neither a database nor network access.
 
 ## Deployment
 
@@ -89,7 +162,8 @@ The task validates the existing function, typechecks,
 tests, builds, packages the handler and CA certificate, updates `$LATEST` with
 revision protection, and waits for completion. It does **not** configure environment
 variables, change other settings, publish versions, or invoke the function.
-Local `.env` values are not uploaded. Test with `{}` in the console afterward.
+Local `.env` values are not uploaded. Test with a registered `sourceKey` in the console afterward, for example
+`{"sourceKey":"pitchfork_best_new_tracks"}`.
 
 `pnpm build:lambda` only writes `dist/ingestion/index.cjs` locally. For a manual
 ZIP upload, include `certs/prod-ca-2021.crt` beside it. No `node_modules` is needed.
@@ -103,8 +177,8 @@ for an approved fresh checkout use `pnpm install --frozen-lockfile --ignore-scri
 
 | Command               | Purpose                                                                                                         |
 | --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `pnpm ingest`         | Run the handler locally; loads `.env`, requires database access, logs metadata, upserts tracks and records runs |
-| `pnpm ingest:preview` | Fetch RSS/reviews and print enriched metadata; no database                                                      |
+| `pnpm ingest`         | Run with `--source <key>`; loads `.env`, reads source configuration and persists tracks/runs |
+| `pnpm ingest:preview` | Run with `--source <key>`; read source configuration from Postgres and print tracks without writing                                                      |
 | `pnpm ingest:fixture` | Preview synthetic fixtures offline; no database                                                                 |
 | `pnpm typecheck`      | Check TypeScript                                                                                                |
 | `pnpm test`           | Offline application, template and mocked-upload tests                                                           |
@@ -128,7 +202,8 @@ Tables have RLS enabled; runtime grants/policies must permit source/run operatio
 and track reads/inserts/updates.
 `pnpm db:migrate:local` and `pnpm test:db:local` read `.env.local` and allow no TLS
 only on loopback hosts. They require an already-running local database. The normal
-DB integration command does not load `.env`; previews do not load credentials.
+DB integration command does not load `.env`; live previews load `.env` for
+read-only source lookup, while offline fixtures do not load credentials.
 Hosted track-ingestion integration remains unverified.
 
 ## Documentation

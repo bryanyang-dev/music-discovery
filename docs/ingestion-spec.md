@@ -1,10 +1,10 @@
-# Pitchfork ingestion specification
+# RSS track ingestion specification
 
 ## Current scope
 
 The Lambda is managed in the AWS console, including manually configured runtime
 environment variables. The initial Supabase schema/source seed has been applied.
-The handler calls `ingestPitchfork` to fetch the feed, enrich reviews, log metadata
+The handler calls `ingestSource` to fetch the feed, enrich reviews, log metadata
 and persist tracks and run tracking. Successful runs save feed validators; partial
 or failed runs clear them. Hosted track-upsert integration remains unverified.
 
@@ -15,7 +15,12 @@ There is no frontend, public API, playback, recording matching or historical bac
 
 ## Discovery and extraction
 
-Source key: `pitchfork_best_new_tracks`. Feed:
+The source registry currently supports the Pitchfork adapter only; additional
+publisher adapters need their own tested URL and metadata rules. Source registration
+uses existing schema fields and requires no migration. See [source selection and
+registration](../README.md#selecting-and-registering-sources).
+
+Seeded source key (explicitly supplied in events): `pitchfork_best_new_tracks`. Feed:
 `https://pitchfork.com/feed/reviews/best/tracks/rss`.
 
 The parser accepts at most 100 RSS items, validates review URLs/headings, and folds
@@ -42,7 +47,9 @@ Review publication date is not a release date. Genre/label grouping is preserved
 as supplied. No HTML, full review prose, images or audio are stored; parsed metadata
 is deliberately logged. [Fixtures](../packages/rss/test/fixtures/README.md) are synthetic.
 
-URLs must use approved HTTPS Pitchfork hosts/paths. Identity normalizes `www`,
+URLs must use approved HTTPS Pitchfork hosts/paths. The feed URL comes from the
+source row, can have its own path under `/feed/` and query parameters, and is not
+replaced by a compiled URL. Identity normalizes `www`,
 fragments and known tracking parameters while retaining meaningful query values.
 URLs, not titles, artists, GUIDs or dates, determine duplicates. No automatic
 canonical alias merging is implemented.
@@ -53,7 +60,11 @@ The applied migration creates RLS-enabled `ingestion_sources`, `ingestion_runs` 
 `tracks`, plus the Pitchfork source seed. Runtime roles need appropriate grants and
 policies; public clients must not gain table access. Preserve applied migrations.
 
-1. Load the source. A disabled source skips without creating a run.
+1. Require and validate the event's `sourceKey`, load that registered source
+   including its feed URL and metadata, and select its publisher adapter by
+   `name`/`category`. The event does not select a URL and there is no default source.
+   A disabled source skips without creating a run.
+   Missing sources and unsupported adapters fail before a run is created.
 2. Begin a run and update the source attempt time/clear validators atomically.
 3. Fetch RSS using the previously loaded validators. A 304 skips enrichment and
    writes; otherwise log `feed_parsed` and enrich entries sequentially outside
@@ -115,6 +126,14 @@ are nested under `result`; there are no top-level source/category/status fields.
 Feed/track events include full parsed metadata. Error events include safe `code`
 and `message`; SQL, credentials and raw driver errors are excluded. See the
 [operations event/error tables](operations.md) for interpretation.
+
+Application database transactions, SQL statements and connection shutdown have
+paired `database_request`/`database_response` logs with call/parent IDs, request/source
+context, timing, counts/outcomes and allowlisted, bounded response data. URL query
+strings, validator/GUID values and unknown fields are removed or redacted.
+Statement success precedes
+commit; the transaction response establishes completion. See
+[database log semantics](operations.md#database-request-and-response-logs).
 
 `pnpm test` uses synthetic fixtures and mocked AWS/network calls, including checks
 of the undeployed template. `pnpm test:bundle` loads the built CommonJS handler.

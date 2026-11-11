@@ -11,7 +11,7 @@ credentials/grants/RLS, and CloudWatch logging permissions on the execution role
 
 Use `pnpm upload:lambda` for tested code/CA uploads. It leaves console configuration
 unchanged. `pnpm build:lambda` builds locally only. Neither command uploads `.env`
-or copies local environment values into Lambda. After uploading, test `{}` in the
+or copies local environment values into Lambda. After uploading, test `{"sourceKey":"pitchfork_best_new_tracks"}` in the
 console and inspect that request's logs. See [README](../README.md#deployment).
 
 If the initial function check reports an expired AWS session, the upload script
@@ -24,6 +24,32 @@ started. Use AWS CLI 2.32.0 or newer for `aws login`.
 CloudFormation/CDK do not manage this function. The
 [retained template](../infra/README.md) does not establish live schedules, queues,
 alarms, retention or concurrency. Check those settings in the console as needed.
+
+## Source selection and registration
+
+Invoke with `{ "sourceKey": "pitchfork_best_new_tracks" }` to select the registered
+feed. Missing/invalid keys fail before connecting; no default source or feed URL
+is compiled into the handler. Select a source from
+local ingestion with `pnpm ingest --source <key>`. Completion logs include the key.
+Feed URLs and publisher/category metadata come from the database. URLs supplied
+in invocation payloads are ignored. Update existing trigger payloads to include
+`sourceKey` before using the new handler. Unknown keys fail;
+disabled sources skip; unsupported publisher/category pairs fail before run creation.
+
+Use `pnpm sources:add --help` for the local registration command. After authorizing
+the database write, supply `--key`, `--name`, `--category` and `--feed-url`; see the
+[README example](../README.md#selecting-and-registering-sources). It uses `DATABASE_URL`,
+requires source INSERT privileges/RLS, rejects duplicate keys without updating old
+rows, and creates no trigger. It validates adapter compatibility before connecting.
+Only the Pitchfork Best New Tracks parser is currently supported; its stored
+URL must use HTTPS on an approved Pitchfork host under `/feed/`, and its content
+must match that parser. A different publisher needs an implemented adapter before
+registration. No schema migration is needed.
+
+Live previews use `pnpm ingest:preview --source <key>` to read the source from
+Postgres and fetch/enrich without writing any source/run/track data. They load
+`.env` and require source SELECT grants/RLS. `pnpm ingest:fixture` remains entirely
+offline. Review-page failures terminate a preview; ingestion isolates bad reviews.
 
 ## Track persistence
 
@@ -43,6 +69,7 @@ clear validators so the next poll retries the full current feed.
 | `rss_fetch_aborted`, `rss_fetch_max_attempts_reached`, `rss_fetch_failed` | Deadline, exhausted retries or terminal fetch failure |
 | `ingestion_completed` | Nested `result` with status, run ID/counts/issues, or disabled-source skip reason |
 | `ingestion_failed`, `database_close_failed` | Safe error code and descriptive message |
+| `database_request`, `database_response` | Paired database transaction, SQL statement and shutdown metadata; see below |
 
 Handler logs include `requestId` and `level`; only RSS attempt events have an
 attempt number. Local previews log feeds/tracks without a Lambda request ID and
@@ -60,6 +87,48 @@ Inserted/updated/unchanged counts reflect completed database upserts. `found`
 counts raw RSS items; `rejected` counts invalid entries/reviews. Counts are returned/logged, not stored
 as database columns. A startup failure can produce `ingestion_failed` without a
 completion event. A worker killed before finalization can leave a `running` row.
+
+## Database request and response logs
+
+Database logging is enabled by default for application storage APIs: source lookup,
+registration, run tracking and track upserts, including live preview source reads.
+Each transaction, application SQL statement (including timeout setup), normal close
+and forced termination emits `database_request` followed by `database_response`.
+Driver-managed BEGIN/COMMIT/ROLLBACK are covered by the transaction pair. Direct
+Drizzle access used in integration-test setup and the separate migration CLI do
+not use this application logger.
+
+Requests identify `operation`, `scope` (`transaction`, `query` or `connection`) and
+a unique `callId`. Query/termination logs include `parentCallId` linking them to
+their transaction. Lambda propagates `requestId` and `sourceKey`; local commands
+include the source key with `requestId: null`.
+
+Responses repeat the identifiers and add `status` and `durationMs`. Array results
+include `rowCount` and, when supplied by the driver, `affectedRowCount`. Track
+transactions report `outcome: inserted | updated | unchanged`; other responses
+report `hasResult`. Successful calls also include `response`: sanitized returned
+rows, a source/run object, run ID or write outcome; void results become `null`.
+Source responses expose configuration such as key, publisher/category, enabled
+state and a sanitized feed URL. Track/run responses include recognized metadata,
+timestamps, counts and safe issue details. Unknown fields are omitted; URL query
+strings/fragments and credentials are removed, and ETag/Last-Modified/GUID values
+are redacted. The actual result used by ingestion is unchanged.
+
+Response data is limited to 10 rows, 10 values per array, 512 characters per string
+and 16,000 UTF-8 bytes. `responseTruncated` marks length/size truncation; oversized
+responses use a placeholder. If sanitization fails, the call still succeeds and
+logs `[response unavailable]`. These limits belong to
+`packages/db/src/database-response-sanitization.ts`.
+
+Failures use ERROR level with a classified `code` and fixed safe `message`;
+successful calls use INFO level. SQL text, parameters, connection strings and raw
+driver errors remain excluded from these events.
+
+A successful statement does not prove its transaction committed; use the parent
+transaction's successful response to confirm that boundary. A timeout can be
+followed by a late statement response, while the transaction remains failed.
+Hard termination can leave a request without a response. Logger exceptions are
+ignored so logging cannot change database outcomes or prevent cleanup.
 
 ## Limits and connection cleanup
 
@@ -117,7 +186,9 @@ unfinished run rows is implemented.
 | `DATABASE_PERMISSION_ERROR` | Runtime role grants and RLS policies |
 | `DATABASE_DNS_ERROR` / `DATABASE_CONNECTION_ERROR` | Hostname, port, network access and database availability |
 | `DATABASE_TIMEOUT` | Connection/query/lock timeout or server-side query cancellation |
-| `DATABASE_SCHEMA_ERROR` / `SOURCE_NOT_FOUND` | Target database, applied migrations and Pitchfork source seed |
+| `DATABASE_SCHEMA_ERROR` / `SOURCE_NOT_FOUND` | Target database, applied migrations and requested source registration |
+| `INVALID_SOURCE` / `UNSUPPORTED_SOURCE` | Event source key, registration arguments, publisher/category and compatible feed URL |
+| `SOURCE_ALREADY_EXISTS` | Choose a different key; registration never overwrites existing sources |
 | `DATABASE_ERROR` | Unclassified database failure; inspect database diagnostics privately |
 | `HTTP_ERROR` / `NETWORK_ERROR` / `REQUEST_TIMEOUT` | Publisher response, network access, Retry-After and deadlines |
 | `INVALID_FEED` / `INVALID_ENTRY` | Feed format, required fields and allowed URLs |

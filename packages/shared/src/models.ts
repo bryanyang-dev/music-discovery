@@ -20,9 +20,15 @@ export interface TrackInput extends FeedEntry {
   releaseDate: string | null;
 }
 
-export interface SourceRecord {
-  id: string;
+export interface SourceDefinition {
+  key: string;
+  name: string;
+  category: string;
   feedUrl: string;
+}
+
+export interface SourceRecord extends SourceDefinition {
+  id: string;
   enabled: boolean;
   etag: string | null;
   lastModified: string | null;

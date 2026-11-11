@@ -15,14 +15,10 @@ export {
   type RunResult,
   type RunStatus,
   type SourceRecord,
+  type SourceDefinition,
   type TrackInput,
 } from "./models.ts";
 export type { IngestionStore } from "./ingestion-store.interface.ts";
-export {
-  PITCHFORK_FEED_URL,
-  PITCHFORK_SOURCE_KEY,
-  httpUrl,
-  pitchforkUrl,
-  safeLogUrl,
-  sourceKey,
-} from "./pitchfork.ts";
+export { httpUrl, safeLogUrl } from "./urls.ts";
+export { validateSourceDefinition, validateSourceKey } from "./source-validation.ts";
+export type { SourceRegistry } from "./source-registry.interface.ts";

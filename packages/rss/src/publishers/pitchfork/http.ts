@@ -1,28 +1,13 @@
 import { setTimeout as delay } from "node:timers/promises";
-import { IngestionError, pitchforkUrl } from "@music-discovery/shared";
-import { HTTP_POLICY } from "./http-policy.ts";
+import { IngestionError } from "@music-discovery/shared";
+import { HTTP_POLICY } from "../../http-policy.ts";
+
+import { pitchforkUrl } from "./urls.ts";
+import type { HttpOptions, HttpResponse } from "../../models.ts";
 
 const MILLISECONDS_PER_SECOND = 1_000;
 const REDIRECT_STATUS_CODES = new Set([301, 302, 303, 307, 308]);
 const RETRYABLE_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
-
-export interface HttpOptions {
-  fetcher?: typeof fetch;
-  signal?: AbortSignal;
-  timeoutMs?: number;
-  maxBytes?: number;
-  attempts?: number;
-  sleep?: (milliseconds: number, signal?: AbortSignal) => Promise<void>;
-  now?: () => number;
-}
-
-export interface HttpResponse {
-  status: number;
-  body: string;
-  url: string;
-  etag: string | null;
-  lastModified: string | null;
-}
 
 function retryAfterMs(value: string | null, nowMs: number): number | null {
   if (!value) {

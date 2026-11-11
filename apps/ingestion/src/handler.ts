@@ -1,9 +1,9 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { Context } from "aws-lambda";
-import { fetchFeed, type HttpOptions } from "@music-discovery/rss";
-import { connectDatabase } from "@music-discovery/db";
-import { IngestionError, toIngestionError, type IngestionStore } from "@music-discovery/shared";
-import { ingestPitchfork } from "./run.ts";
+import type { FeedFetcher, HttpOptions } from "@music-discovery/rss";
+import { connectDatabase, type DatabaseLogger } from "@music-discovery/db";
+import { IngestionError, validateSourceKey, toIngestionError, type IngestionStore } from "@music-discovery/shared";
+import { ingestSource } from "./run.ts";
 import { INGESTION_TIMING } from "./timing.ts";
 
 // RSS retries share a 30-second cap inside the overall ingestion work budget.
@@ -35,8 +35,13 @@ const LOG_LEVEL = {
 type LogLevel = typeof LOG_LEVEL[keyof typeof LOG_LEVEL];
 
 interface RssHandlerDependencies {
-  fetch?: typeof fetchFeed;
-  connect?: (url: string, options: { signal: AbortSignal }) => DatabaseConnection;
+  fetch?: FeedFetcher;
+  connect?: (url: string, options: {
+    signal: AbortSignal;
+    logger: DatabaseLogger;
+    requestId: string | null;
+    sourceKey: string;
+  }) => DatabaseConnection;
   databaseUrl?: string;
   http?: HttpOptions;
   logger?: RssLogger;
@@ -60,10 +65,9 @@ function logEvent(
   }
 }
 
-function createFeedFetcher(dependencies: RssHandlerDependencies, requestId: string | null): typeof fetchFeed {
+function createFeedFetcher(fetch: FeedFetcher, dependencies: RssHandlerDependencies, requestId: string | null): FeedFetcher {
   return async (url, validators, options) => {
     const {
-      fetch = fetchFeed,
       logger = console,
       sleep = (delayMs, signal) => delay(delayMs, undefined, { signal }),
     } = dependencies;
@@ -153,23 +157,31 @@ function createFeedFetcher(dependencies: RssHandlerDependencies, requestId: stri
   };
 }
 
+export function sourceKeyFromEvent(event: unknown): string {
+  if (event === null || typeof event !== "object" || Array.isArray(event) || !Object.hasOwn(event, "sourceKey")) {
+    throw new IngestionError("INVALID_SOURCE");
+  }
+  return validateSourceKey((event as { sourceKey: unknown }).sourceKey);
+}
+
 export function createHandler(dependencies: RssHandlerDependencies = {}) {
-  return async (_event?: unknown, context?: Context) => {
+  return async (event?: unknown, context?: Context) => {
     const logger = dependencies.logger ?? console;
     const requestId = context?.awsRequestId ?? null;
     let database: DatabaseConnection | undefined;
     let failure: IngestionError | undefined;
     try {
+      const sourceKey = sourceKeyFromEvent(event);
       const signal = createWorkSignal(context);
       const databaseUrl = dependencies.databaseUrl ?? process.env.DATABASE_URL;
       if (!databaseUrl) {
         throw new IngestionError("DATABASE_CONFIG_MISSING");
       }
-      database = (dependencies.connect ?? connectDatabase)(databaseUrl, { signal });
-      const result = await ingestPitchfork(database.store, {
+      database = (dependencies.connect ?? connectDatabase)(databaseUrl, { signal, logger, requestId, sourceKey });
+      const result = await ingestSource(database.store, sourceKey, {
         http: dependencies.http ?? {},
         signal,
-        fetch: createFeedFetcher(dependencies, requestId),
+        wrapFetch: (fetch) => createFeedFetcher(dependencies.fetch ?? fetch, dependencies, requestId),
         onFeedParsed: (feed) => {
           logEvent(logger, requestId, LOG_LEVEL.INFO, "feed_parsed", { feed });
         },
@@ -178,7 +190,7 @@ export function createHandler(dependencies: RssHandlerDependencies = {}) {
         },
       });
       logEvent(logger, requestId, result.status === "succeeded" || result.status === "skipped"
-        ? LOG_LEVEL.INFO : LOG_LEVEL.ERROR, "ingestion_completed", { result });
+        ? LOG_LEVEL.INFO : LOG_LEVEL.ERROR, "ingestion_completed", { sourceKey, result });
       if (result.status === "failed") {
         throw new IngestionError(result.errors[0]?.code ?? "DATABASE_ERROR");
       }

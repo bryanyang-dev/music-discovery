@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { fetchFeed, parseFeed } from "../src/index.ts";
+import { fetchPitchforkFeed, parsePitchforkFeed } from "../src/index.ts";
 import { HTTP_POLICY } from "../src/http-policy.ts";
 import { plainText } from "../src/text.ts";
-import { PITCHFORK_FEED_URL } from "@music-discovery/shared";
+
+const feedUrl = "https://pitchfork.com/feed/reviews/best/tracks/rss";
 
 const xml = await readFile(new URL("./fixtures/pitchfork.xml", import.meta.url), "utf8");
 
@@ -19,7 +20,7 @@ test("cache validators accept the character limit and reject longer values", asy
   const expectedValidatorCharacters = 1_000;
   for (const characterCount of [expectedValidatorCharacters, expectedValidatorCharacters + 1]) {
     const etag = "x".repeat(characterCount);
-    const result = await fetchFeed(PITCHFORK_FEED_URL, { etag: null, lastModified: null }, {
+    const result = await fetchPitchforkFeed(feedUrl, { etag: null, lastModified: null }, {
       fetcher: async () => new Response(xml, { headers: { etag } }),
     });
     const expected = characterCount === expectedValidatorCharacters ? etag : null;
@@ -33,8 +34,8 @@ test("feed entry limit accepts 100 entries and rejects 101", async () => {
   const atLimit = emptyFeed.replace("</channel>", item.repeat(100) + "</channel>");
   const beyondLimit = emptyFeed.replace("</channel>", item.repeat(101) + "</channel>");
 
-  assert.equal((await parseFeed(atLimit)).found, 100);
-  await assert.rejects(parseFeed(beyondLimit), /INVALID_FEED/);
+  assert.equal((await parsePitchforkFeed(atLimit)).found, 100);
+  await assert.rejects(parsePitchforkFeed(beyondLimit), /INVALID_FEED/);
 });
 
 test("plain-text metadata keeps the documented 4000-character bound", () => {

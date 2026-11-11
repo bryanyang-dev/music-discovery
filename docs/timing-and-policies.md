@@ -27,7 +27,7 @@ the reserve. Finalization uses its own database deadline after the work signal e
 
 With 300 s remaining, work gets 240 s, leaving 60 s. With 30 s remaining, it gets
 5.75 s. If the reserve cannot fit, the handler fails before connecting. Direct
-`ingestPitchfork` calls without a supplied signal use a 240 s work deadline;
+`ingestSource` calls without a supplied signal use a 240 s work deadline;
 only the Lambda handler can account for remaining invocation time.
 
 ## Database limits: policy.ts

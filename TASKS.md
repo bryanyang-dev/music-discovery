@@ -779,3 +779,132 @@ This section is updated as each task progresses, including verification evidence
 - Added a note in `AGENTS.md` to keep instructions there rather than in `CLAUDE.md`.
 - Verification: documentation-only change; no code, dependencies or infrastructure
   were touched.
+
+## 2026-11-11 21:34 UTC — Select and register ingestion sources
+
+- Added handler `{sourceKey}` selection and local `pnpm ingest --source <key>`;
+  older events without the key retain the seeded Pitchfork default. URLs and
+  publisher/category metadata are loaded from the database. Completion logs
+  include the selected key; malformed keys fail before connection setup.
+- Generalized orchestration to `ingestSource` with a publisher adapter contract
+  covering validation, fetching and extraction. Kept existing Pitchfork URL and
+  metadata rules, with retries wrapping the selected adapter's fetcher. Unsupported
+  publishers/categories are rejected before run creation; no generic artist guessing.
+- Added `pnpm sources:add --key ... --name ... --category ... --feed-url ...`
+  with validation before connecting, insert-only registration, duplicate-key
+  errors and bounded database operations/cleanup. Uses existing source table
+  fields; no schema migration. Registration creates no schedule or track writes.
+- Added source selection/registration regression coverage and an opt-in PostgreSQL
+  registration integration test. Updated README structure/commands, specification,
+  operations, timing function name and repository adapter guidance.
+- Validation: typecheck, 89 application tests, 30 infrastructure/mocked-upload
+  tests, rebuilt Lambda and three bundle smoke tests passed. The registration
+  command's help, relative Markdown links and Git whitespace were checked. No
+  dependency installation, remote registration, migration or deployment occurred.
+- Remaining work: implement and validate a second publisher adapter after the user
+  supplies its RSS URL (requested during this task). Pitchfork is currently the
+  only supported adapter; a registration by itself cannot ingest another publisher.
+  Live database integration was not run.
+
+## 2026-11-11 21:39 UTC — Put publisher rules with their adapter
+
+- Removed `shared/src/pitchfork.ts`. Moved Pitchfork constants, URL policy, RSS
+  parser/fetcher, HTTP implementation and review extraction under
+  `rss/src/publishers/pitchfork/`, with its own adapter implementation. Shared now
+  contains publisher-neutral contracts, data models, source validation, error
+  messages and generic URL/log sanitization.
+- Moved metadata SHA-256 hashing directly into the database merge module; removed
+  the ambiguously named shared hash helper. Moved publisher URL tests to RSS and
+  extended shared sanitization coverage to other HTTP hosts and rejected schemes.
+- Added neutral RSS HTTP/feed data models and an explicit FeedFetcher contract.
+  Named public publisher APIs `fetchPitchforkFeed`, `parsePitchforkFeed` and
+  `extractPitchforkTrack`. Handler retries wrap the adapter's supplied fetcher
+  without an implicit Pitchfork fetch fallback. Updated consumers and README tree.
+- Preserved Pitchfork's URL/redirect restrictions and metadata behavior. Generic
+  safe logging now strips query/fragment data on any valid HTTP(S) host; it does
+  not authorize fetch destinations. Database tests use generic source fixture URLs.
+- Updated AGENTS.md ownership guidance. Verification: typecheck, 90 application
+  tests, 30 infrastructure/mocked-upload tests, Lambda rebuild, three bundle smoke
+  tests, source-command help, relative README links and Git whitespace passed.
+- No dependencies installed, remote data changed or deployments performed. Live
+  database integration was not run. Second-publisher support remains pending its
+  feed URL; this cleanup preserves the preceding source-selection/registration work.
+
+## 2026-11-11 21:46 UTC — Make Postgres authoritative for feed configuration
+
+- Required `sourceKey` in Lambda events and local live ingestion/preview commands;
+  removed the implicit Pitchfork selection and all provider feed URL constants
+  from runtime code. The existing source row supplies feed URL, publisher,
+  category, enabled state and validators before adapter fetching and track upserts.
+- Kept publisher host/protocol/path validation with the adapter. Pitchfork feed
+  URLs now accept configured paths under `/feed/` and query parameters rather
+  than duplicating the seeded feed path in code; the fetched feed must still match
+  its Best New Tracks parser. Provider URL examples remain in seeds/tests/docs.
+- Added `previewSource` using read-only source lookup and unconditional HTTP fetch;
+  live previews now require `--source <key>` and load `.env`. Offline fixture
+  previews retain zero database/network access. CLI failures expose safe error codes.
+- Added tests proving the four-step flow uses the stored custom feed URL, ignores
+  an event-supplied URL and writes extracted tracks. Covered unknown sources,
+  required event context, configurable feed URL validation and read-only previews.
+- Updated README, operations, specification and upload completion guidance. Existing
+  trigger/test payloads must supply a source key; documented the retained undeployed
+  template's missing key. No schema migration or remote trigger changes performed.
+- Verification: typecheck, 94 application tests, 30 infrastructure/mocked-upload
+  tests, Lambda rebuild and four bundle smoke tests passed. Offline fixture CLI,
+  relative documentation links and Git whitespace checks passed. Live database
+  integration was not run; no dependencies installed, remote writes or deployments.
+
+## 2026-11-11 22:03 UTC — Name source files by responsibility
+
+- Renamed the local registration entry point from `sources.ts` to
+  `apps/ingestion/src/add-source.cli.ts`, preserving the `pnpm sources:add` command.
+- Renamed shared source validators from `sources.ts` to `source-validation.ts`,
+  updating the public barrel export and README tree. Historical work-log paths
+  remain as records of their original tasks.
+- Added a dedicated AGENTS.md naming section: describe subject and role, use
+  action/entity `.cli.ts` entry points, avoid vague filenames for focused behavior,
+  and retain the existing interface/implementation and public-import conventions.
+- Verification: typecheck, nine source-registration/shared tests, CLI help, Lambda
+  rebuild and four bundle smoke tests passed. Relative README links, active path
+  references and Git whitespace checked. No dependencies, remote writes or deployment.
+
+## 2026-11-11 22:14 UTC — Add paired database request/response logs
+
+- Added a database call logger with unique call IDs, transaction parent IDs,
+  request/source context, elapsed milliseconds, row/affected-row counts, upsert
+  outcomes and safe failure codes/messages. SQL text/parameters, row contents and
+  credentials are not serialized. Logger exceptions do not change work or cleanup.
+- Named and logged every application transaction and SQL statement in source
+  lookup/registration, run tracking and track writes, including transaction-local
+  timeout setup. Logged forced termination and normal close. Transaction responses
+  follow commit/rollback; driver-managed transaction SQL is covered by that pair.
+- Propagated Lambda logger/request ID/source key into database setup; registration
+  and live preview provide source keys. Raw Drizzle integration-test setup and the
+  separate migration CLI remain outside application logging, documented explicitly.
+- Added six focused tests for correlated success/failure, redaction, counts/outcomes,
+  logger errors, timeout/late results and concurrent IDs. Added an opt-in PostgreSQL
+  test for actual SQL/transaction/shutdown coverage and handler/registration context
+  assertions. Updated README, operations, specification and query-wrapper guidance.
+- Verification: typecheck, 100 application tests, 30 infrastructure/mocked-upload
+  tests, Lambda rebuild and four bundle smoke tests passed. Relative documentation
+  links and Git whitespace passed. PostgreSQL integration was not run; no dependencies,
+  remote writes, migrations or deployments were performed.
+
+## 2026-11-11 22:29 UTC — Include sanitized database response data
+
+- Added a `response` payload to successful database logs, with allowlisted source,
+  track and run fields, timestamps, safe issues, returned IDs and write outcomes.
+  Kept existing call correlation, durations and count summaries. Void results log null.
+- Added a dedicated response sanitizer: omit unknown fields; remove URL credentials,
+  queries and fragments; redact HTTP validator/GUID values. Results used by the
+  application are not mutated. Sanitizer failures log a placeholder without changing
+  the database call outcome or exposing thrown details.
+- Bound responses to 10 rows, 10 array values, 512 characters per string and 16,000
+  UTF-8 bytes; mark truncation and replace oversized payloads with a small placeholder.
+- Extended unit coverage for returned rows, redaction, limits, multibyte payloads
+  and unexpected accessors. Updated the opt-in PostgreSQL logging test, README,
+  operations, specification and repository allowlist guidance.
+- Verification: typecheck, 104 application tests, 30 infrastructure/mocked-upload
+  tests, Lambda rebuild and four bundle smoke tests passed. Relative documentation
+  links and Git whitespace passed. PostgreSQL integration was not run; no dependency
+  installation, remote writes, migrations or uploads were performed.

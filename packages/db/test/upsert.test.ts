@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { test } from "node:test";
 import { and, eq } from "drizzle-orm";
-import { IngestionError, PITCHFORK_FEED_URL, emptyCounts, type RunResult, type TrackInput } from "@music-discovery/shared";
-import { connectDatabase } from "../src/index.ts";
+import { IngestionError, emptyCounts, type RunResult, type TrackInput } from "@music-discovery/shared";
+import { connectDatabase, type DatabaseLogger } from "../src/index.ts";
 import { ingestionRuns, ingestionSources, tracks } from "../src/schema.ts";
 
 const connectionString = process.env.TEST_DATABASE_URL;
@@ -15,12 +15,12 @@ const article: TrackInput = {
   summary: "Summary", imageUrl: null, genres: ["Pop"], labels: ["Example"], releaseDate: null,
 };
 
-async function fixture() {
-  const database = connectDatabase(connectionString!, { localTest });
+async function fixture(logger?: DatabaseLogger) {
+  const database = connectDatabase(connectionString!, { localTest, ...(logger ? { logger, requestId: "integration-request" } : {}) });
   const other = connectDatabase(connectionString!, { localTest });
   const keys = [randomUUID(), randomUUID()];
   const sources = await database.db.insert(ingestionSources).values(
-    keys.map((key) => ({ key, feedUrl: PITCHFORK_FEED_URL })),
+    keys.map((key) => ({ key, feedUrl: "https://example.com/feed.xml" })),
   ).returning();
   assert.equal(sources.length, 2);
   return {
@@ -39,6 +39,68 @@ async function fixture() {
 function successful(runId: string): RunResult {
   return { runId, status: "succeeded", ...emptyCounts(), inserted: 1, found: 1, errors: [], notModified: false };
 }
+
+test("database API logs transactions, each SQL statement and shutdown with sanitized row data", {
+  skip: !connectionString,
+}, async () => {
+  const records: Record<string, unknown>[] = [];
+  const capture = (message: string) => { records.push(JSON.parse(message)); };
+  const state = await fixture({ log: capture, error: capture });
+  try {
+    const source = await state.database.store.getSource(state.keys[0]!);
+    assert.ok(source);
+    const runId = await state.database.store.beginRun(source);
+    await state.database.store.recordDiscovery(source, runId, []);
+    await state.database.store.upsertTrack(source, runId, { ...article, summary: "logged-track-summary" });
+    await state.database.store.upsertTrack(source, runId, { ...article, summary: "logged-track-summary" });
+    await state.database.store.rejectEntry(source, runId, { code: "INVALID_ENTRY", sourceUrl: null });
+    await state.database.store.finishRun(source, successful(runId), null);
+    await assert.rejects(state.database.store.getSource("missing_source"), /SOURCE_NOT_FOUND/);
+  } finally {
+    await state.cleanup();
+  }
+  const requests = records.filter(record => record.event === "database_request");
+  const responses = records.filter(record => record.event === "database_response");
+  assert.equal(requests.length, responses.length);
+  for (const request of requests) {
+    assert.equal(responses.filter(response => response.callId === request.callId).length, 1);
+    assert.equal(request.requestId, "integration-request");
+  }
+  const queries = requests.filter(record => record.scope === "query");
+  for (const operation of ["select_source", "record_source_attempt", "insert_run", "update_run_issues",
+    "lock_active_run", "select_existing_track", "upsert_track", "refresh_track_last_seen",
+    "append_run_issue", "finalize_run", "finalize_source", "set_statement_timeout", "set_lock_timeout"]) {
+    assert.ok(queries.some(record => record.operation === operation), operation);
+  }
+  for (const query of queries) {
+    assert.ok(requests.some(record => record.callId === query.parentCallId && record.scope === "transaction"));
+  }
+  assert.ok(responses.some(record => record.code === "SOURCE_NOT_FOUND"));
+  assert.ok(responses.some(record => record.operation === "close" && record.status === "succeeded"));
+  assert.match(JSON.stringify(records), /logged-track-summary/);
+  assert.doesNotMatch(JSON.stringify(records), /INSERT INTO|SELECT |postgres:\/\//);
+});
+
+test("source registration is insert-only and rejects duplicate keys", {
+  skip: !connectionString,
+}, async () => {
+  const state = await fixture();
+  const key = randomUUID().replaceAll("-", "");
+  const definition = { key: `test_${key}`, name: "pitchfork", category: "best_new_track", feedUrl: "https://example.com/feed.xml" };
+  try {
+    await state.database.sources.addSource(definition);
+    const source = await state.database.store.getSource(definition.key);
+    assert.ok(source);
+    assert.equal(source.name, definition.name);
+    assert.equal(source.category, definition.category);
+    assert.equal(source.feedUrl, definition.feedUrl);
+    await assert.rejects(state.database.sources.addSource({ ...definition, name: "other" }), /SOURCE_ALREADY_EXISTS/);
+    assert.equal((await state.database.store.getSource(definition.key))?.name, definition.name);
+  } finally {
+    await state.database.db.delete(ingestionSources).where(eq(ingestionSources.key, definition.key));
+    await state.cleanup();
+  }
+});
 
 test("Postgres upserts preserve IDs/first seen, classify changes, merge omissions and isolate sources", {
   skip: !connectionString,
