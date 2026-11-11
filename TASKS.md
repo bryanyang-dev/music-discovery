@@ -943,3 +943,15 @@ This section is updated as each task progresses, including verification evidence
   schema migration edits remain in their original checkout. Verified Git/GitHub
   CLI syntax against installed help and primary documentation. Markdown links,
   example paths and Git whitespace checked; application tests not rerun for docs.
+
+## 2026-11-11 23:55 UTC — Condense workflow guidance after PR review
+
+- Addressed PR #2 comment 6810118352: replaced the detailed AGENTS.md workflow
+  with repository expectations for task isolation, human PR review, feedback and
+  safe post-merge cleanup. Referenced the personal worktree-pr-workflow skill for
+  procedures while keeping the repository rules usable without it.
+- Updated the README link description to reflect the condensed section. The earlier
+  detailed-workflow entry describes the initial PR revision and is superseded here.
+- Validation: relative Markdown links, balanced fences and Git whitespace passed.
+  No GitHub checks are configured/reported for this branch; application tests were
+  not rerun for documentation-only changes.
