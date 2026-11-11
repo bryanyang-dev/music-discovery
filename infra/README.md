@@ -50,8 +50,9 @@ Before any future deployment, review these gaps against the current application:
   creates another function and does not capture manual configuration.
 - The template does not set `NODE_EXTRA_CA_CERTS`. Add trusted CA configuration and
   include `prod-ca-2021.crt` in its S3 artifact before using this database setup.
-- Track upserts remain disabled. `partial_failure` is returned and logged, not
-  thrown; only terminal failures trigger Lambda function-error retries.
+- Track upserts are enabled in application code; verify hosted writes and runtime
+  grants/RLS before rollout. `partial_failure` is returned and logged, not thrown;
+  only terminal failures trigger Lambda function-error retries.
 - Completion logs use `{event, requestId, result, level}` with `result.status` and
   nested counts. Template log fixtures are representative, not emitted-handler
   integration tests; validate filters against actual CloudWatch events.

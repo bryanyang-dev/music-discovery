@@ -48,23 +48,22 @@ function completed(outcome: Awaited<ReturnType<typeof ingestPitchfork>>): RunRes
   return outcome as RunResult;
 }
 
-test("preview logs extracted tracks on every run without upserts or cached validators", async () => {
+test("upserts classify inserted, unchanged and updated tracks across runs", async () => {
   const memory = memoryStore();
-  memory.source.etag = '\"old\"';
-  memory.store.upsertTrack = async () => { assert.fail("track writes are disabled"); };
   const extracted: TrackInput[] = [];
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (const outcome of ["inserted", "unchanged", "updated"] as const) {
+    const page = outcome === "updated" ? html.replaceAll("A Song", "Updated Song") : html;
     const result = completed(await ingestPitchfork(memory.store, {
-      http: { fetcher: fetcher() },
+      http: { fetcher: fetcher(xml, page) },
       onTrackExtracted: (track) => extracted.push(track),
     }));
     assert.equal(result.status, "succeeded");
-    assert.equal(result.inserted, 0);
-    assert.equal(result.updated, 0);
-    assert.equal(result.unchanged, 0);
-    assert.equal(memory.caches.at(-1), null);
+    assert.deepEqual([result.inserted, result.updated, result.unchanged],
+      [Number(outcome === "inserted"), Number(outcome === "updated"), Number(outcome === "unchanged")]);
+    assert.deepEqual(memory.caches.at(-1), { etag: '"version-1"', lastModified: null });
   }
-  assert.equal(extracted.length, 2);
+  assert.equal(memory.tracks.size, 1);
+  assert.equal(extracted.length, 3);
   assert.ok(extracted[0]?.artists.length);
   assert.equal(extracted[0]?.sourceUrl, url);
 });
@@ -75,7 +74,7 @@ test("a malformed entry does not block a healthy one and clears validators", asy
   const result = completed(await ingestPitchfork(memory.store, { http: { fetcher: fetcher(feed) } }));
   assert.equal(result.status, "partial_failure");
   assert.equal(result.found, 2);
-  assert.equal(result.inserted, 0);
+  assert.equal(result.inserted, 1);
   assert.equal(result.rejected, 1);
   assert.equal(memory.source.etag, null);
   assert.equal(memory.caches[0], null);
@@ -97,7 +96,7 @@ test("partial page failure retries unconditionally on the next hourly poll", asy
   };
   const result = completed(await ingestPitchfork(memory.store, { http: { fetcher: recovery } }));
   assert.equal(conditional, undefined);
-  assert.equal(result.inserted, 0);
+  assert.equal(result.inserted, 1);
   assert.equal(result.status, "succeeded");
 });
 test("one failed review does not block a later valid track", async () => {
@@ -111,9 +110,9 @@ test("one failed review does not block a later valid track", async () => {
   };
   const result = completed(await ingestPitchfork(memory.store, { http: { fetcher: loader } }));
   assert.equal(result.status, "partial_failure");
-  assert.equal(result.inserted, 0);
+  assert.equal(result.inserted, 1);
   assert.equal(result.rejected, 1);
-  assert.equal(memory.tracks.size, 0);
+  assert.equal(memory.tracks.size, 1);
 });
 test("network, malformed-feed, and database errors fail the run without leaking details", async () => {
   for (const scenario of ["network", "xml", "database"]) {
@@ -129,19 +128,58 @@ test("network, malformed-feed, and database errors fail the run without leaking 
     assert.equal(memory.caches[0], null);
   }
 });
-test("unexpected 304 without preview validators fails without page requests or track writes", async () => {
+test("304 reuses cached validators without page requests or track writes", async () => {
   const memory = memoryStore();
   memory.source.etag = '"old"';
+  memory.source.lastModified = "Tue, 10 Nov 2026 12:00:00 GMT";
   let calls = 0;
   const result = completed(await ingestPitchfork(memory.store, { http: {
-    fetcher: async () => { calls++; return new Response(null, { status: 304 }); },
+    fetcher: async (_input, init) => {
+      calls++;
+      const headers = new Headers(init?.headers);
+      assert.equal(headers.get("If-None-Match"), memory.source.etag);
+      assert.equal(headers.get("If-Modified-Since"), memory.source.lastModified);
+      return new Response(null, { status: 304 });
+    },
   } }));
   assert.equal(calls, 1);
-  assert.equal(result.notModified, false);
+  assert.equal(result.notModified, true);
   assert.equal(result.found, 0);
+  assert.equal(result.status, "succeeded");
+  assert.deepEqual(memory.caches[0], { etag: '"old"', lastModified: memory.source.lastModified });
+  assert.equal(memory.tracks.size, 0);
+});
+
+test("a failed write preserves earlier commits, stops later entries and clears validators", async () => {
+  const memory = memoryStore();
+  memory.source.etag = '"old"';
+  const item = xml.match(/<item>[\s\S]*?<\/item>/)![0];
+  const feed = xml.replace("</channel>",
+    item.replaceAll("example-a-song", "second-song")
+    + item.replaceAll("example-a-song", "third-song") + "</channel>");
+  const upsert = memory.store.upsertTrack;
+  let writes = 0;
+  memory.store.upsertTrack = async (...args) => {
+    if (++writes === 2) {
+      throw new Error("private SQL and credentials");
+    }
+    return upsert(...args);
+  };
+  const result = completed(await ingestPitchfork(memory.store, { http: {
+    fetcher: async (input) => String(input).includes("/feed/")
+      ? new Response(feed, { headers: { etag: '"new"' } })
+      : new Response(html.replaceAll("example-a-song", new URL(String(input)).pathname.split("/").at(-2)!)),
+  } }));
   assert.equal(result.status, "failed");
-  assert.equal(result.errors[0]?.code, "INVALID_FEED");
-  assert.equal(memory.source.etag, null);
+  assert.equal(result.inserted, 1);
+  assert.equal(result.rejected, 0);
+  assert.equal(writes, 2);
+  assert.equal(memory.tracks.size, 1);
+  assert.ok(memory.tracks.has(url));
+  assert.equal(memory.finished.length, 1);
+  assert.equal(memory.caches[0], null);
+  assert.equal(result.errors[0]?.code, "DATABASE_ERROR");
+  assert.ok(!JSON.stringify(result).includes("private"));
 });
 test("empty valid feed is successful and never deletes existing tracks", async () => {
   const memory = memoryStore();
@@ -151,7 +189,7 @@ test("empty valid feed is successful and never deletes existing tracks", async (
   } }));
   assert.equal(result.status, "succeeded");
   assert.equal(result.found, 0);
-  assert.equal(memory.tracks.size, 0);
+  assert.equal(memory.tracks.size, 1);
 });
 test("a disabled source skips without fetching or creating a run", async () => {
   const memory = memoryStore();

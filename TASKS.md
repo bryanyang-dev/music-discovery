@@ -5,8 +5,9 @@
 - Lambda `musicRssFetcher` is managed in the AWS console; runtime environment
   variables are set manually. The upload task updates code/CA only.
 - The CloudFormation template is undeployed; CDK is not in use.
-- Parsed feeds/tracks are logged and source/run records are persisted. Track
-  upserts remain disabled; validators are bypassed and cleared.
+- The handler logs parsed metadata, persists source/run records and upserts tracks.
+  Successful runs save validators; partial/failed runs clear them. These code changes
+  require an upload before taking effect in the console-managed Lambda.
 - The Supabase initial schema/source seed is applied history. Hosted track-upsert
   integration remains unverified.
 - Use [README](README.md), [operations](docs/operations.md) and
@@ -685,3 +686,88 @@ This section is updated as each task progresses, including verification evidence
   and documentation only; no AWS or database settings changed.
 - Pre-commit verification: typecheck, seven timing/database/HTTP policy tests,
   relative Markdown links and Git whitespace checks passed again.
+
+## 2026-11-11 17:28 UTC — Restore track persistence
+
+- Enabled per-track upserts in ingestion and incremented inserted/updated/unchanged
+  counts only after successful writes. Invalid reviews remain isolated; database
+  write failures stop the run while preserving earlier committed tracks.
+- Restored stored feed validators and save response validators only on successful
+  runs. Partial/failed runs clear them for a full retry; 304 responses skip reviews
+  and track writes. Removed the handler's misleading `writeSkipped` flag; local
+  preview/fixture commands remain read-only.
+- Updated current guides, runtime track permission requirements and read-only SQL
+  checks. Documented that extraction logs precede writes and cannot confirm them.
+- Verification: typecheck, 82 offline application tests, 27 infrastructure/mocked
+  upload tests, Lambda rebuild and three bundle smoke tests passed. Relative
+  Markdown links and Git whitespace checks passed. Used installed tools only.
+- Real PostgreSQL integration and hosted ingestion were not run. No dependency
+  installation, migration, AWS upload or deployment was performed. The existing
+  console-managed Lambda requires a code upload to use the restored writes.
+
+## 2026-11-11 17:32 UTC — Separate storage contracts, client and queries
+
+- Moved `IngestionStore` and related feed/track/source/run contracts into
+  `packages/shared/src/ingestion-store.ts`, re-exporting all existing names from
+  the package root so consumers need no import changes.
+- Extracted connection setup, bounded transactions, error translation and shutdown
+  into `packages/db/src/client.ts`. Moved ingestion queries unchanged into
+  `createIngestionStore` in `packages/db/src/ingestion-store.ts`; the database
+  package root composes them through the existing `connectDatabase` API.
+- Updated README ownership links and AGENTS.md guidance to keep future queries
+  behind the bounded transaction helper. Preserved the pending track-write changes.
+- Verification: typecheck, 82 offline application tests, 27 infrastructure/mocked
+  upload tests, Lambda rebuild, three bundle smoke tests, relative Markdown links
+  and Git whitespace checks passed. No new dependencies or runtime behavior changes.
+- Real database integration was not run; no migration, upload or deployment occurred.
+
+## 2026-11-11 17:37 UTC — Make interface and implementation names explicit
+
+- Replaced the ambiguous shared `ingestion-store.ts` with
+  `ingestion-store.interface.ts`, containing only the behavioral storage contract.
+  Moved data shapes, the run issue limit and empty-count helper to `models.ts`;
+  error definitions/helpers to `errors.ts`; source/URL/identity helpers to
+  `pitchfork.ts`. Shared `index.ts` now only exports the public API, with internal
+  modules importing owning files directly and no circular barrel imports.
+- Renamed the database implementation to `postgres-ingestion-store.ts` and its
+  factory to `createPostgresIngestionStore`. `connectDatabase` and package imports
+  remain unchanged. Kept the existing `shared` workspace package name to avoid
+  requiring dependency reinstallation for this naming refactor.
+- Updated README ownership links, the specification's issue-limit location and
+  AGENTS.md conventions for interface/implementation filenames.
+- Verification: typecheck, 82 application tests, 27 infrastructure/mocked-upload
+  tests, Lambda rebuild and three bundle smoke tests passed. Relative Markdown
+  links and Git whitespace checks passed. No dependencies were installed.
+- Real database integration was not run; no migration, upload or deployment occurred.
+
+## 2026-11-11 17:38 UTC — Document the project structure
+
+- Replaced the README's abbreviated code list and overlapping ownership table
+  with a project tree covering application entry points, shared interfaces/models,
+  PostgreSQL implementation, RSS/HTTP modules, tests, migrations and support folders.
+- Explained explicit interface/implementation filenames, package dependency
+  direction, public versus internal imports and handler-to-store wiring.
+- Verified documented paths against the working tree, relative README links and
+  Git whitespace. Documentation-only change; application tests were not rerun.
+
+## 2026-11-11 17:40 UTC — Lead with project structure
+
+- Moved the README project structure section directly after the introduction,
+  ahead of deployment and development guidance. Section content is unchanged.
+- Verified section order and Git whitespace; documentation-only change, so
+  application tests were not rerun.
+
+## 2026-11-11 17:48 UTC — Recover expired upload sessions
+
+- Reauthenticated the approved `music-discovery` profile with `aws login` using
+  the signing-in-to-aws skill; verified STS identity in account `783161622181`.
+- The upload script now recognizes the initial configuration check's expired-session
+  error, logs in with the same region/profile and retries that check once. Valid
+  sessions skip login; unrelated errors, failed login and repeated expiry stop
+  before builds/uploads. No authentication retry occurs after an update starts.
+- Documented browser sign-in and retry behavior in README and operations. Added
+  mocked regression coverage for default/explicit/omitted profiles, failed login,
+  repeated expiry and other AWS errors.
+- Verification: all 14 mocked-upload tests, Bash syntax, TypeScript typecheck,
+  relative documentation links and Git whitespace passed. No dependencies were
+  installed and no Lambda code upload, migration or infrastructure change occurred.

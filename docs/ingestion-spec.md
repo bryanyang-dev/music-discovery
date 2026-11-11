@@ -4,12 +4,12 @@
 
 The Lambda is managed in the AWS console, including manually configured runtime
 environment variables. The initial Supabase schema/source seed has been applied.
-The handler calls `ingestPitchfork` to inspect the feed, enrich reviews, log metadata
-and persist run tracking. **Track upserts are currently commented out.** Feed
-validators are bypassed and cleared; hosted track-upsert integration is unverified.
+The handler calls `ingestPitchfork` to fetch the feed, enrich reviews, log metadata
+and persist tracks and run tracking. Successful runs save feed validators; partial
+or failed runs clear them. Hosted track-upsert integration remains unverified.
 
-Persisting recommendations and polling hourly remain the intended direction, not
-current guarantees. No CDK/CloudFormation stack manages the existing function.
+Hourly polling requires a separately configured console trigger. No
+CDK/CloudFormation stack manages the existing function.
 See [operations](operations.md) and [infrastructure status](../infra/README.md).
 There is no frontend, public API, playback, recording matching or historical backfill.
 
@@ -55,17 +55,21 @@ policies; public clients must not gain table access. Preserve applied migrations
 
 1. Load the source. A disabled source skips without creating a run.
 2. Begin a run and update the source attempt time/clear validators atomically.
-3. Fetch RSS unconditionally, log `feed_parsed`, then enrich entries sequentially
-   outside database transactions. Log each valid track with `writeSkipped: true`.
-4. Checkpoint discovery/rejection issues. Track upserts and write-counter increments
-   are disabled; one rejected review does not block later entries.
-5. Finalize run/source state atomically, retaining at most 100 issues. Validators
-   stay cleared even on success; `last_success_at` means successful inspection.
+3. Fetch RSS using the previously loaded validators. A 304 skips enrichment and
+   writes; otherwise log `feed_parsed` and enrich entries sequentially outside
+   database transactions. Log each extracted track before writing it.
+4. Checkpoint discovery/rejection issues and upsert valid tracks individually,
+   incrementing inserted/updated/unchanged only after each successful write. A
+   rejected review does not block later entries. A database failure stops work;
+   earlier committed tracks remain stored.
+5. Finalize run/source state atomically, retaining at most 100 issues. Successful
+   runs save response validators and update `last_success_at`; partial/failed runs
+   clear validators for an unconditional retry.
 6. The handler closes the database in `finally` on success or failure.
 
 Counts are returned/logged, not persisted as columns. Inserted/updated/unchanged
-remain zero; rejected counts invalid entries/reviews. Duplicates and unprocessed
-entries mean `found` need not equal the sum of result counters.
+count completed upserts; rejected counts invalid entries/reviews. Duplicates and
+unprocessed entries mean `found` need not equal the sum of result counters.
 
 `succeeded` and `skipped` return normally. `partial_failure` also returns normally
 and logs an ERROR-level completion. Terminal `failed` runs throw a sanitized error
@@ -76,12 +80,12 @@ There are no source leases or locks. Concurrent invocations may each open one
 connection and update source/run state independently; concurrency settings belong
 to the console. The unused template's reserved concurrency is not a live guarantee.
 
-The database store still implements dormant track upserts: uniqueness by
-`(source_id, source_url)`, stable row IDs/first-seen time, refreshed last-seen time,
+Track upserts enforce uniqueness by `(source_id, source_url)`, stable row IDs and
+first-seen time, refreshed last-seen time,
 and metadata hashes distinguishing changed/unchanged rows. Missing optional values
-do not erase existing metadata. These rules require validation when writes resume.
-Conditional HTTP support also remains in `packages/rss`, but inspection does not
-send validators; an unsolicited 304 without validators fails feed validation.
+do not erase existing metadata. Conditional HTTP uses stored ETag/Last-Modified;
+an unsolicited 304 without validators fails feed validation. A 304 does not
+revalidate review metadata; clearing source validators forces re-enrichment.
 
 ## Limits and cancellation
 
@@ -89,7 +93,7 @@ send validators; an unsolicited 304 without validators fails feed validation.
 current values, cleanup-reserve calculation and how to change limits safely.
 `handler.ts` owns the RSS phase/retries; `timing.ts` owns the run budget;
 `packages/rss/src/http-policy.ts` and `packages/db/src/policy.ts` own I/O limits.
-`packages/shared/src/index.ts` separately caps persisted run issues at 100.
+`packages/shared/src/models.ts` separately caps persisted run issues at 100.
 
 Only transient network/timeouts and selected HTTP statuses are retried. Permanent
 HTTP failures and invalid feeds fail immediately. The handler's RSS retries can

@@ -68,6 +68,13 @@ The goal is to become more effective at working in this repository with every co
   Avoid nested ternaries, opaque boolean arguments, and unnecessary abstractions.
 - Keep orchestration, parsing, HTTP, and persistence separate. Put tests in the owning
   package and use deliberate public interfaces across package boundaries.
+- Keep database connection/deadline/shutdown handling in `packages/db/src/client.ts`
+  and ingestion queries in `postgres-ingestion-store.ts`. Route queries through the bounded
+  transaction helper; keep `index.ts` focused on public exports and wiring.
+- Use `.interface.ts` for files dedicated to behavioral contracts and name concrete
+  implementations for their backing technology (for example, `postgres-ingestion-store.ts`).
+  Keep data shapes in `models.ts`; internal modules import their owners directly,
+  while package consumers use the public `index.ts` exports.
 - Preserve primary failures when cleanup fails. Bound cleanup, make cancellation
   ownership explicit, and never expose secrets in logs or errors.
 - Keep changes focused. Add regression tests for affected boundaries and failure paths;

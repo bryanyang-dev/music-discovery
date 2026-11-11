@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 
-function fixture(context, failure = "") {
+function fixture(context, failure = "", session = "") {
   const root = mkdtempSync(join(tmpdir(), "lambda-upload-test-"));
   context.after(() => rmSync(root, { recursive: true, force: true }));
   for (const directory of ["scripts", "bin", "dist/ingestion", "certs"]) {
@@ -26,6 +26,12 @@ const args = process.argv.slice(2);
 fs.appendFileSync(process.env.UPLOAD_TEST_TRACE, JSON.stringify({ command: '${command}', args }) + '\\n');
 if (process.env.UPLOAD_TEST_FAILURE === args[0] || process.env.UPLOAD_TEST_FAILURE === args[1] || process.env.UPLOAD_TEST_FAILURE === args[2]) process.exit(9);
 if ('${command}' === 'aws' && args[1] === 'get-function-configuration') {
+  const configurationCalls = fs.readFileSync(process.env.UPLOAD_TEST_TRACE, 'utf8').trim().split('\\n')
+    .map(line => JSON.parse(line)).filter(call => call.command === 'aws' && call.args?.[1] === 'get-function-configuration').length;
+  if (process.env.UPLOAD_TEST_SESSION === 'always-expired' || (process.env.UPLOAD_TEST_SESSION === 'expired' && configurationCalls === 1)) {
+    console.error("aws: [ERROR]: Your session has expired. Please reauthenticate using 'aws login'.");
+    process.exit(255);
+  }
   console.log(process.env.UPLOAD_TEST_CONFIGURATION || 'nodejs24.x\\tindex.handler\\tZip\\trevision-123');
 }
 if ('${command}' === 'aws' && args[1] === 'update-function-code') {
@@ -42,6 +48,7 @@ if ('${command}' === 'aws' && args[1] === 'update-function-code') {
         cwd: tmpdir(), encoding: "utf8",
         env: { ...process.env, PATH: `${join(root, "bin")}:${process.env.PATH}`,
           UPLOAD_TEST_TRACE: trace, UPLOAD_TEST_FAILURE: failure,
+          UPLOAD_TEST_SESSION: session,
           UPLOAD_TEST_CONFIGURATION: configuration ?? "" },
       });
     },
@@ -115,6 +122,46 @@ test("profile can be omitted to use the normal AWS credential selection", (conte
   for (const call of state.calls().filter((call) => call.command === "aws")) {
     assert.ok(!call.args.includes("--profile"));
   }
+});
+
+test("expired sessions log in with the selected profile/region and retry once before building", (context) => {
+  for (const args of [[], ["rss-test", "us-east-2", "development"], ["rss-test", "us-east-2"]]) {
+    const state = fixture(context, "", "expired");
+    const result = state.run(args);
+    assert.equal(result.status, 0, result.stderr);
+    const calls = state.calls();
+    assert.deepEqual(calls.slice(0, 4).map(call => [call.command, ...call.args.slice(0, 2)]), [
+      ["aws", "lambda", "get-function-configuration"],
+      ["aws", "login", "--region"],
+      ["aws", "lambda", "get-function-configuration"],
+      ["pnpm", "typecheck"],
+    ]);
+    const login = calls[1].args;
+    assert.equal(login[login.indexOf("--region") + 1], "us-east-2");
+    if (args.length === 2) {
+      assert.ok(!login.includes("--profile"));
+    } else {
+      assert.equal(login[login.indexOf("--profile") + 1], args[2] ?? "music-discovery");
+    }
+    assert.match(result.stdout, /Upload completed/);
+  }
+});
+
+test("failed login or repeated expiry stops before building or uploading", (context) => {
+  for (const [failure, session, expectedStatus] of [["login", "expired", 9], ["", "always-expired", 255]]) {
+    const state = fixture(context, failure, session);
+    const result = state.run();
+    assert.equal(result.status, expectedStatus);
+    const calls = state.calls();
+    assert.equal(calls.filter(call => call.args?.[0] === "login").length, 1);
+    assert.ok(!calls.some(call => call.command === "pnpm" || call.args?.includes("update-function-code")));
+  }
+});
+
+test("other AWS errors do not trigger login", (context) => {
+  const state = fixture(context, "get-function-configuration");
+  assert.equal(state.run().status, 9);
+  assert.equal(state.calls().length, 1);
 });
 
 

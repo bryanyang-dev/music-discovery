@@ -32,9 +32,24 @@ if [[ ! -f "$certificatePath" || ! -r "$certificatePath" || ! -s "$certificatePa
 fi
 
 # Select only deployment fields; never print the function's environment variables.
-configuration="$(aws lambda get-function-configuration \
-  --function-name "$functionName" "${awsOptions[@]}" \
-  --query '[Runtime,Handler,PackageType,RevisionId]' --output text)"
+readFunctionConfiguration() {
+  aws lambda get-function-configuration \
+    --function-name "$functionName" "${awsOptions[@]}" \
+    --query '[Runtime,Handler,PackageType,RevisionId]' --output text
+}
+
+if configuration="$(readFunctionConfiguration 2>&1)"; then
+  :
+else
+  configurationExitCode=$?
+  printf '%s\n' "$configuration" >&2
+  if [[ "$configuration" != *"Your session has expired"* ]]; then
+    exit "$configurationExitCode"
+  fi
+  echo "AWS session expired. Signing in before retrying the upload checks..." >&2
+  aws login "${awsOptions[@]}"
+  configuration="$(readFunctionConfiguration)"
+fi
 IFS=$'\t' read -r runtime handler packageType revisionId <<< "$configuration"
 if [[ "$runtime" != "nodejs24.x" || "$handler" != "index.handler" || "$packageType" != "Zip" || -z "$revisionId" ]]; then
   echo "The existing function must use Node.js 24, handler index.handler, and ZIP packaging." >&2

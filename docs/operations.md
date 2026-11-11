@@ -14,41 +14,50 @@ unchanged. `pnpm build:lambda` builds locally only. Neither command uploads `.en
 or copies local environment values into Lambda. After uploading, test `{}` in the
 console and inspect that request's logs. See [README](../README.md#deployment).
 
+If the initial function check reports an expired AWS session, the upload script
+runs `aws login` using the selected region/profile (default `music-discovery`).
+Complete the browser sign-in; the script then retries the check once and continues
+the normal release checks. A failed login, repeated expiry or unrelated AWS error
+stops the upload. It does not attempt authentication recovery after an update has
+started. Use AWS CLI 2.32.0 or newer for `aws login`.
+
 CloudFormation/CDK do not manage this function. The
 [retained template](../infra/README.md) does not establish live schedules, queues,
 alarms, retention or concurrency. Check those settings in the console as needed.
 
-## Current inspection mode
+## Track persistence
 
-Track upserts are commented out. Source/run tracking still writes to PostgreSQL,
-so database access is required before feed processing starts. Each review page is
-fetched for artist metadata absent from RSS. Healthy entries produce track logs;
-a bad entry does not block later entries. Feed validators are bypassed and cleared
-on finalization, ensuring repeated runs fetch and inspect the full current feed.
+The handler writes source/run records and upserts each valid track in a separate
+transaction. Each review page supplies artist metadata absent from RSS. Invalid
+entries/reviews do not block later entries; a database write failure stops the run.
+Earlier committed tracks remain stored if later work fails. Successful runs save
+feed validators; a 304 skips review fetches and track writes. Partial/failed runs
+clear validators so the next poll retries the full current feed.
 
 | Log event | Contents |
 | --- | --- |
 | `rss_fetch_started`, `rss_fetch_succeeded` | Attempt; success also includes the parsed fetch response |
 | `feed_parsed` | Entire parsed feed: entries, counts and parsing issues |
-| `track_extracted` | One enriched track, with `writeSkipped: true` |
+| `track_extracted` | One enriched track before its database write; this event alone does not confirm persistence |
 | `rss_fetch_attempt_failed`, `rss_fetch_retry_scheduled` | Safe failure details or retry delay in milliseconds |
 | `rss_fetch_aborted`, `rss_fetch_max_attempts_reached`, `rss_fetch_failed` | Deadline, exhausted retries or terminal fetch failure |
 | `ingestion_completed` | Nested `result` with status, run ID/counts/issues, or disabled-source skip reason |
 | `ingestion_failed`, `database_close_failed` | Safe error code and descriptive message |
 
 Handler logs include `requestId` and `level`; only RSS attempt events have an
-attempt number. Local previews log feeds/tracks without a Lambda request ID.
+attempt number. Local previews log feeds/tracks without a Lambda request ID and
+retain `writeSkipped: true`; `pnpm ingest:preview` and `pnpm ingest:fixture` never write.
 `ingestion_completed.result.status` can be:
 
 | Status | Meaning |
 | --- | --- |
-| `succeeded` | Valid entries were inspected, or the feed was empty; no track writes |
-| `partial_failure` | Some entries/reviews were rejected; later valid tracks were logged; handler returns normally |
+| `succeeded` | Valid entries were persisted, the feed was empty, or HTTP returned 304 |
+| `partial_failure` | Some entries/reviews were rejected; later valid tracks were persisted; handler returns normally |
 | `failed` | Feed, database or deadline failure; handler throws after cleanup |
 | `skipped` | Source disabled; no run row created |
 
-Inserted/updated/unchanged counts remain zero. `found` counts raw RSS items;
-`rejected` counts invalid entries/reviews. Counts are returned/logged, not stored
+Inserted/updated/unchanged counts reflect completed database upserts. `found`
+counts raw RSS items; `rejected` counts invalid entries/reviews. Counts are returned/logged, not stored
 as database columns. A startup failure can produce `ingestion_failed` without a
 completion event. A worker killed before finalization can leave a `running` row.
 
@@ -84,14 +93,19 @@ SELECT key, enabled, last_attempt_at, last_success_at FROM ingestion_sources;
 SELECT started_at, finished_at, status, errors
 FROM ingestion_runs ORDER BY started_at DESC LIMIT 24;
 
+SELECT source_id, source_url, track_title, artists, first_seen_at, last_seen_at
+FROM tracks ORDER BY last_seen_at DESC LIMIT 24;
+
 SELECT application_name, usename, state, count(*)
 FROM pg_stat_activity WHERE backend_type = 'client backend'
 GROUP BY application_name, usename, state ORDER BY count(*) DESC;
 ```
 
-`last_success_at` currently means a successful inspection, not persisted tracks.
-Previous `tracks` rows are not deleted or updated by inspection runs. No automatic
-pruning or recovery of unfinished run rows is implemented.
+`last_success_at` records a successful run, including an empty feed or 304. Tracks
+are unique by source/canonical URL; repeated content is unchanged, new metadata
+updates the row, and missing optional values preserve existing metadata. Tracks
+disappearing from RSS are not deleted. No automatic pruning or recovery of
+unfinished run rows is implemented.
 
 ## Troubleshooting and maintenance
 
@@ -123,7 +137,8 @@ retiring old credentials. Secrets Manager rotation does not update this manually
 configured value. Database migrations require separate authorization and use
 `DATABASE_MIGRATION_URL`; preserve applied migration history.
 
-Retry a failed inspection after fixing its cause. There is no need to clear HTTP
-validators manually while inspection mode is active. Re-enabling track writes
-requires a code change, validation of database upserts, and review of cache/retry
-behavior before relying on stored recommendations or an hourly schedule.
+Retry a failed run after fixing its cause; partial/failed runs clear validators
+automatically. To force re-enrichment after a successful cached run, an operator
+can clear that source's `etag` and `last_modified` through an authorized database
+change. Verify runtime track grants/RLS and stored rows after uploading this code;
+hosted track ingestion remains unverified. Scheduling is maintained in the console.

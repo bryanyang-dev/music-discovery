@@ -55,24 +55,25 @@ function setup() {
 
 const context = (remainingMs: number) => ({ awsRequestId: "request", getRemainingTimeInMillis: () => remainingMs }) as Context;
 
-test("handler logs enriched tracks without writing them to the database", async () => {
+test("handler writes enriched tracks and reports inserted counts", async () => {
   const state = setup();
   state.dependencies.fetch = async (url, validators, options) => {
     assert.equal(url, PITCHFORK_FEED_URL);
-    assert.deepEqual(validators, { etag: null, lastModified: null });
+    assert.deepEqual(validators, { etag: state.source.etag, lastModified: state.source.lastModified });
     assert.equal(options?.attempts, 1);
     return response;
   };
   const result = await createHandler(state.dependencies)({}, context(300_000));
   assert.equal(result.status, "succeeded");
-  assert.equal(state.tracks.length, 0);
+  assert.equal(state.tracks.length, 1);
   const event = state.logs.find((log) => log.event === "track_extracted");
   const track = event?.track as TrackInput;
   assert.equal(track.sourceGuid, response.feed.entries[0]?.sourceGuid);
   assert.equal(track.summary, "The title track.");
   assert.ok(track.artists.length);
-  assert.equal(event?.writeSkipped, true);
-  assert.equal(state.finished[0]?.inserted, 0);
+  assert.equal(Object.hasOwn(event!, "writeSkipped"), false);
+  assert.deepEqual(JSON.parse(JSON.stringify(state.tracks[0])), track);
+  assert.equal(state.finished[0]?.inserted, 1);
   assert.equal(state.closed(), 1);
   assert.ok(state.logs.every((log) => log.requestId === "request"));
 });
@@ -103,7 +104,7 @@ test("RSS retries honor Retry-After and can recover", async () => {
   assert.deepEqual(delays, [5_000]);
 });
 
-test("bad review metadata is recorded and later entries can still be logged", async () => {
+test("bad review metadata is recorded and later entries are persisted", async () => {
   const state = setup();
   state.dependencies.fetch = async () => ({ ...response, feed: { ...response.feed, found: 2,
     entries: [{ ...response.feed.entries[0]!, sourceUrl: "https://pitchfork.com/reviews/bad/" }, ...response.feed.entries] } });
@@ -111,7 +112,7 @@ test("bad review metadata is recorded and later entries can still be logged", as
   const result = await createHandler(state.dependencies)();
   assert.equal(result.status, "partial_failure");
   assert.equal(state.finished[0]?.rejected, 1);
-  assert.equal(state.tracks.length, 0);
+  assert.equal(state.tracks.length, 1);
   assert.equal(state.logs.filter((log) => log.event === "track_extracted").length, 1);
 });
 
@@ -123,6 +124,16 @@ test("304 skips review fetches and writes", async () => {
   assert.equal(result.status, "succeeded");
   assert.equal(state.finished[0]?.notModified, true);
   assert.equal(state.tracks.length, 0);
+  assert.equal(state.closed(), 1);
+});
+
+test("track write failures fail the handler and still finalize and close", async () => {
+  const state = setup();
+  state.store.upsertTrack = async () => { throw new IngestionError("DATABASE_PERMISSION_ERROR"); };
+  await assert.rejects(createHandler(state.dependencies)(), /DATABASE_PERMISSION_ERROR/);
+  assert.equal(state.finished[0]?.status, "failed");
+  assert.equal(state.finished[0]?.inserted, 0);
+  assert.equal(state.finished[0]?.rejected, 0);
   assert.equal(state.closed(), 1);
 });
 
@@ -217,8 +228,8 @@ test("the handler parses RSS XML before logging enriched tracks", async () => {
     fetcher: async (input) => new Response(String(input).includes("/feed/") ? xml : html),
   } })();
   assert.equal(result.status, "succeeded");
-  assert.equal(state.tracks.length, 0);
-  assert.equal(state.finished[0]?.inserted, 0);
+  assert.equal(state.tracks.length, 1);
+  assert.equal(state.finished[0]?.inserted, 1);
 });
 
 test("logs the full parsed feed and every extracted track with the request ID", async () => {
@@ -241,7 +252,7 @@ test("logs the full parsed feed and every extracted track with the request ID", 
   assert.equal(tracks.length, entries.length);
   assert.deepEqual(tracks.map((log) => (log.track as TrackInput).sourceGuid), entries.map((entry) => entry.sourceGuid));
   assert.ok([...feeds, ...tracks].every((log) => log.level === "INFO" && log.requestId === "request"));
-  assert.equal(state.tracks.length, 0);
+  assert.equal(state.tracks.length, entries.length);
 });
 
 test("specific database messages survive startup and failed-run finalization into logs and Lambda errors", async () => {

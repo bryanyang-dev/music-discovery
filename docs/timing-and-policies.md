@@ -69,7 +69,8 @@ never extends the shared deadline.
 `maxFeedResponseBytes` (2,000,000) and `maxReviewResponseBytes` (3,000,000) bound
 decompressed response bodies. `maxValidatorCharacters` (1,000) bounds HTTP cache
 validator values. These are HTTP safety limits; feed-item/metadata limits stay in
-their parsers. Inspection currently bypasses conditional feed caching.
+their parsers. Ingestion sends stored validators and retains response validators
+only after a successful run.
 
 ## Changing a limit
 

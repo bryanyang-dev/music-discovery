@@ -6,6 +6,7 @@ import {
   PITCHFORK_SOURCE_KEY,
   safeLogUrl,
   toIngestionError,
+  type CacheValidators,
   type IngestionStore,
   type RunResult,
   type SourceRecord,
@@ -65,9 +66,8 @@ async function processFeedEntries(
     }
 
     onTrackExtracted(track);
-    // Temporarily disabled while inspecting extracted track metadata in logs.
-    // const outcome = await store.upsertTrack(source, result.runId, track);
-    // result[outcome]++;
+    const outcome = await store.upsertTrack(source, result.runId, track);
+    result[outcome]++;
   }
 
   if (result.rejected > 0) {
@@ -92,13 +92,14 @@ async function executeRun(
     errors: [],
   };
   let primaryFailure: IngestionError | undefined;
+  let validators: CacheValidators | null = null;
 
   try {
     const response = await fetch(source.feedUrl, {
-      // Fetch unconditionally while writes are disabled so every track is logged.
-      etag: null,
-      lastModified: null,
+      etag: source.etag,
+      lastModified: source.lastModified,
     }, http);
+    validators = response.validators;
 
     if (response.notModified) {
       result.notModified = true;
@@ -114,8 +115,7 @@ async function executeRun(
 
   result.errors = result.errors.slice(0, MAX_RUN_ERROR_COUNT);
   try {
-    // Do not cache a feed whose tracks have only been logged, not persisted.
-    return await store.finishRun(source, result, null);
+    return await store.finishRun(source, result, result.status === "succeeded" ? validators : null);
   } catch (error) {
     if (primaryFailure) {
       primaryFailure.cleanupErrors.push(errorCode(error));
@@ -141,7 +141,7 @@ export async function ingestPitchfork(
     console.log(JSON.stringify({ event: "feed_parsed", level: "INFO", feed }));
   });
   const onTrackExtracted = options.onTrackExtracted ?? ((track: TrackInput) => {
-    console.log(JSON.stringify({ event: "track_extracted", level: "INFO", track, writeSkipped: true }));
+    console.log(JSON.stringify({ event: "track_extracted", level: "INFO", track }));
   });
   return executeRun(store, source, http, options.fetch ?? fetchFeed, onFeedParsed, onTrackExtracted);
 }

@@ -174,7 +174,7 @@ export function createHandler(dependencies: RssHandlerDependencies = {}) {
           logEvent(logger, requestId, LOG_LEVEL.INFO, "feed_parsed", { feed });
         },
         onTrackExtracted: (track) => {
-          logEvent(logger, requestId, LOG_LEVEL.INFO, "track_extracted", { track, writeSkipped: true });
+          logEvent(logger, requestId, LOG_LEVEL.INFO, "track_extracted", { track });
         },
       });
       logEvent(logger, requestId, result.status === "succeeded" || result.status === "skipped"
