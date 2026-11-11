@@ -1,8 +1,20 @@
 # Pitchfork ingestion — implementation work log
 
-Session: 2026-11-10. Scope: implement the agreed single-source hourly ingestion
-specification for AWS Lambda. No deployment, remote database migration, commit,
-or provisioning is authorized by this implementation work.
+## Current status
+
+- Lambda `musicRssFetcher` is managed in the AWS console; runtime environment
+  variables are set manually. The upload task updates code/CA only.
+- The CloudFormation template is undeployed; CDK is not in use.
+- Parsed feeds/tracks are logged and source/run records are persisted. Track
+  upserts remain disabled; validators are bypassed and cleared.
+- The Supabase initial schema/source seed is applied history. Hosted track-upsert
+  integration remains unverified.
+- Use [README](README.md), [operations](docs/operations.md) and
+  [infrastructure status](infra/README.md) for current instructions.
+
+The entries below are chronological history starting 2026-11-10. Earlier scopes,
+authorizations, designs and test counts describe their own task, not current
+operating instructions; later entries supersede earlier assumptions.
 
 ## Task board
 
@@ -646,3 +658,30 @@ This section is updated as each task progresses, including verification evidence
   and 27 infrastructure/mocked-upload tests), pnpm test:bundle (rebuilt Lambda plus
   three smoke tests), and Git whitespace checks passed. Live database integration
   was not run; no AWS deployment or database changes performed.
+
+
+## 2026-11-11 16:57 UTC — Documentation audit: console-managed Lambda
+
+- Reviewed all Markdown documentation against current source/scripts and the
+  user-confirmed console workflow. Replaced stale RSS-only, automatic secret
+  resolution, deployed scheduling/alarms and active track-write claims.
+- Shortened the four main guides from 762 to 413 lines; distinguished the
+  undeployed template and its integration gaps from live setup.
+- Added a current-status summary to this historical log and deployment ownership
+  guidance to AGENTS.md. Fixture provenance remains accurate and unchanged.
+- Documentation-only change: checked relative Markdown links, package-script
+  references and Git whitespace. Application, bundle and live AWS/database checks
+  were not rerun; no code, dependencies, deployments or cloud settings changed.
+
+## 2026-11-11 16:57 UTC — Explain timing and policy ownership
+
+- Added docs/timing-and-policies.md covering run versus I/O limits, every database
+  policy setting, HTTP safety/retries, cleanup-reserve arithmetic and console
+  timeout ownership. Linked it from README, operations and the specification.
+- Added source comments to timing.ts and both policy files. Kept existing limits
+  and runtime behavior unchanged; removed the specification's duplicate limits table.
+- Verification: typecheck, 12 timing/database/HTTP policy tests, relative-link and
+  Git whitespace checks passed. Bundle/live checks were not rerun for comments
+  and documentation only; no AWS or database settings changed.
+- Pre-commit verification: typecheck, seven timing/database/HTTP policy tests,
+  relative Markdown links and Git whitespace checks passed again.

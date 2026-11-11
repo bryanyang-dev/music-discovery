@@ -1,169 +1,129 @@
 # Ingestion operations
 
-The local `musicRssFetcher` handler now performs database ingestion. Deploy with
-`pnpm upload:lambda` after configuring `DATABASE_URL`, trusted database certificates,
-and a suitable function timeout (300 seconds recommended). No deployment or live
-track ingestion has been performed as part of this change.
+## Configuration and releases
 
-Track upserts are currently commented out. Inspect `track_extracted` logs with
-`writeSkipped: true`; these include enriched metadata and the Lambda request ID.
-Run tracking still writes to the database. Feed caching is bypassed and validators
-are cleared so repeated inspection does not skip tracks. Write counts remain zero.
+Manage `musicRssFetcher` in `us-east-2` through the Lambda console. Environment
+variables are set there manually: `DATABASE_URL` for the private PostgreSQL runtime
+connection and `NODE_EXTRA_CA_CERTS=/var/task/prod-ca-2021.crt` for the bundled CA.
+Use Node.js 24, ZIP packaging and handler `index.handler`; a 300-second timeout is
+recommended. Confirm network access to Pitchfork and the database, database
+credentials/grants/RLS, and CloudWatch logging permissions on the execution role.
 
-## Ingestion checks
+Use `pnpm upload:lambda` for tested code/CA uploads. It leaves console configuration
+unchanged. `pnpm build:lambda` builds locally only. Neither command uploads `.env`
+or copies local environment values into Lambda. After uploading, test `{}` in the
+console and inspect that request's logs. See [README](../README.md#deployment).
 
-- Test with `{}` and inspect the returned run summary and `ingestion_completed` log.
-- `rss_fetch_succeeded` records the parsed feed. Each entry is then enriched from
-  its review page and logged; required artist metadata is not present in RSS.
-- Inspect rejected counts and track_extracted events. Write counts remain zero
-  while upserts are disabled; a bad review does not block later entries.
-- RSS fetches retain three transient retries, exponential backoff and Retry-After.
-  The RSS phase is capped at 30 seconds within the overall work deadline.
-- Work stops 24.25 seconds before the Lambda deadline (or after 240 seconds), leaving
-  time for operation termination, run finalization, connection close and return.
-- `ingestion_failed` and `database_close_failed` contain sanitized error codes and
-  descriptive messages.
-  Failed runs throw after finalization and connection cleanup.
+CloudFormation/CDK do not manage this function. The
+[retained template](../infra/README.md) does not establish live schedules, queues,
+alarms, retention or concurrency. Check those settings in the console as needed.
 
-## Before first real run
+## Current inspection mode
 
-- Read README.md and TASKS.md for setup, verification status and unresolved blockers.
-- Review/apply migrations only to the intended development database first.
-- Verify the seeded ingestion_sources row with key pitchfork_best_new_tracks.
-- Use separate migration and runtime credentials. Provision a dedicated runtime
-  role and table-specific RLS policies/privileges before production; public
-  Supabase anonymous/authenticated clients must not gain access.
-- Run disposable-database integration tests, then a deliberately authorized real
-  ingestion run. Validate duplicate-safe reruns and failure handling.
-- Before AWS deployment, confirm selected Region us-east-2, supported services,
-  quotas and billing/spend status. Inspect the infrastructure and notification
-  prerequisites in infra/README.md. Keep the schedule disabled during validation.
+Track upserts are commented out. Source/run tracking still writes to PostgreSQL,
+so database access is required before feed processing starts. Each review page is
+fetched for artist metadata absent from RSS. Healthy entries produce track logs;
+a bad entry does not block later entries. Feed validators are bypassed and cleared
+on finalization, ensuring repeated runs fetch and inspect the full current feed.
 
-## Useful read-only queries
+| Log event | Contents |
+| --- | --- |
+| `rss_fetch_started`, `rss_fetch_succeeded` | Attempt; success also includes the parsed fetch response |
+| `feed_parsed` | Entire parsed feed: entries, counts and parsing issues |
+| `track_extracted` | One enriched track, with `writeSkipped: true` |
+| `rss_fetch_attempt_failed`, `rss_fetch_retry_scheduled` | Safe failure details or retry delay in milliseconds |
+| `rss_fetch_aborted`, `rss_fetch_max_attempts_reached`, `rss_fetch_failed` | Deadline, exhausted retries or terminal fetch failure |
+| `ingestion_completed` | Nested `result` with status, run ID/counts/issues, or disabled-source skip reason |
+| `ingestion_failed`, `database_close_failed` | Safe error code and descriptive message |
 
-Run in a trusted private SQL client:
+Handler logs include `requestId` and `level`; only RSS attempt events have an
+attempt number. Local previews log feeds/tracks without a Lambda request ID.
+`ingestion_completed.result.status` can be:
+
+| Status | Meaning |
+| --- | --- |
+| `succeeded` | Valid entries were inspected, or the feed was empty; no track writes |
+| `partial_failure` | Some entries/reviews were rejected; later valid tracks were logged; handler returns normally |
+| `failed` | Feed, database or deadline failure; handler throws after cleanup |
+| `skipped` | Source disabled; no run row created |
+
+Inserted/updated/unchanged counts remain zero. `found` counts raw RSS items;
+`rejected` counts invalid entries/reviews. Counts are returned/logged, not stored
+as database columns. A startup failure can produce `ingestion_failed` without a
+completion event. A worker killed before finalization can leave a `running` row.
+
+## Limits and connection cleanup
+
+See [timing and policies](timing-and-policies.md) for which file owns each limit,
+the cleanup-reserve calculation and tuning guidance.
+
+- Overall work: at most 240 seconds, capped at Lambda remaining time minus a
+  24.25-second cleanup reserve. Too little remaining time fails before connecting.
+- RSS fetch: 30-second cap inside that work budget, initial attempt plus three
+  retries, 1/2/4-second backoff, honoring longer Retry-After values until deadline.
+- Review HTTP: up to three attempts, 12 seconds per attempt; retry waits above
+  10 seconds stop that review request rather than retrying earlier than requested.
+- Database: one client connection per invocation, 5-second connect timeout,
+  8-second SQL/2-second lock limits and 15-second operation deadline.
+- The handler awaits connection close in `finally`, with a 3-second close timeout.
+  Abort/operation timeout terminates the driver. A hard Lambda kill can interrupt
+  cleanup; closure failures emit `database_close_failed`.
+
+Concurrent invocations can each open one connection; there is no source lock.
+Supabase's backend/pooler/service connections need not disappear when a Lambda
+client disconnects. Inspect connection ownership before treating a dashboard count
+as a leak. Our client sets `application_name=music-discovery-ingestion`.
+
+## Read-only database checks
+
+Run in Supabase SQL Editor or a trusted SQL client:
 
 ```sql
-SELECT key, enabled, last_attempt_at, last_success_at
-FROM ingestion_sources;
+SELECT key, enabled, last_attempt_at, last_success_at FROM ingestion_sources;
 
-SELECT started_at, finished_at, status, not_modified, errors
-FROM ingestion_runs
-ORDER BY started_at DESC
-LIMIT 24;
+SELECT started_at, finished_at, status, errors
+FROM ingestion_runs ORDER BY started_at DESC LIMIT 24;
 
-SELECT track_title, artists, source_url, review_published_at, first_seen_at
-FROM tracks
-ORDER BY review_published_at DESC NULLS LAST
-LIMIT 30;
+SELECT application_name, usename, state, count(*)
+FROM pg_stat_activity WHERE backend_type = 'client backend'
+GROUP BY application_name, usename, state ORDER BY count(*) DESC;
 ```
 
-A successful hourly poll can discover zero new tracks. Check last_success_at,
-not the newest review's date, to assess poll freshness. A 304 updates source
-success time but does not pretend the individual tracks were observed again.
+`last_success_at` currently means a successful inspection, not persisted tracks.
+Previous `tracks` rows are not deleted or updated by inspection runs. No automatic
+pruning or recovery of unfinished run rows is implemented.
 
-## Interpreting outcomes
+## Troubleshooting and maintenance
 
-| Outcome | Meaning / response |
+| Error code | Check |
 | --- | --- |
-| succeeded | All current valid entries processed, empty feed, or HTTP 304. |
-| partial_failure | Some entries/pages were rejected; valid tracks committed. Inspect issue codes and safe source URLs. Cache validators are cleared. |
-| failed | Feed/database/network/deadline prevented completion. Existing commits remain. Cache validators clear when finalization succeeds. |
-| skipped | Source disabled. No run row is created. |
-| running for too long | Worker may have been killed or finalization failed. Inspect manually; later runs leave it unchanged. |
+| `DATABASE_CONFIG_MISSING` / `DATABASE_CONFIG_INVALID` | Runtime `DATABASE_URL`; PostgreSQL URL syntax; URL-encoded password |
+| `DATABASE_TLS_ERROR` | Bundled CA, `NODE_EXTRA_CA_CERTS`, certificate expiry and hostname |
+| `DATABASE_AUTH_ERROR` | Database/pooler username and password |
+| `DATABASE_PERMISSION_ERROR` | Runtime role grants and RLS policies |
+| `DATABASE_DNS_ERROR` / `DATABASE_CONNECTION_ERROR` | Hostname, port, network access and database availability |
+| `DATABASE_TIMEOUT` | Connection/query/lock timeout or server-side query cancellation |
+| `DATABASE_SCHEMA_ERROR` / `SOURCE_NOT_FOUND` | Target database, applied migrations and Pitchfork source seed |
+| `DATABASE_ERROR` | Unclassified database failure; inspect database diagnostics privately |
+| `HTTP_ERROR` / `NETWORK_ERROR` / `REQUEST_TIMEOUT` | Publisher response, network access, Retry-After and deadlines |
+| `INVALID_FEED` / `INVALID_ENTRY` | Feed format, required fields and allowed URLs |
+| `MISSING_METADATA` / `INVALID_METADATA` | Review JSON-LD and scoped artist-header layout |
+| `UNSAFE_URL` | Host, protocol, port, credentials and path validation |
+| `RESPONSE_TOO_LARGE` / `UNSUPPORTED_ENCODING` | Response size and encoding |
+| `RUN_DEADLINE` | Work budget and slow HTTP/database operations |
 
-The service bounds work before Lambda's hard timeout when configured accordingly.
-Track writes commit individually; counts exist only in the returned result.
-There is no application-level source lock. Overlapping executions can overwrite
-track metadata and cache state in commit order. The future template limits its
-function concurrency to one; other invocation paths must be considered separately.
+Every `IngestionError` exposes `CODE: explanation`. Recognized driver codes are
+classified through bounded Drizzle causes; raw driver messages, SQL, parameters
+and credentials are not copied into exposed errors. Full feed/track metadata is
+logged deliberately, so restrict access to CloudWatch and set retention in the
+console; the repository does not configure retention for the current function.
 
-## Failure codes
+After credential rotation, update `DATABASE_URL` in the console and test before
+retiring old credentials. Secrets Manager rotation does not update this manually
+configured value. Database migrations require separate authorization and use
+`DATABASE_MIGRATION_URL`; preserve applied migration history.
 
-- HTTP_ERROR: publisher rejected a request or returned an error. Do not bypass
-  access controls; honor Retry-After. Repeated 403/429 requires operator review.
-- NETWORK_ERROR / REQUEST_TIMEOUT: DNS/network/response stalled; bounded retries
-  apply, followed by later scheduled recovery.
-- INVALID_FEED / INVALID_ENTRY: feed format changed or an item lacks a valid
-  review URL/heading. Compare against the documented fixture shape.
-- MISSING_METADATA / INVALID_METADATA: no reliable artist/track metadata, unrelated
-  JSON-LD, or changed header structure. Update fixtures/parser deliberately.
-- UNSAFE_URL: unexpected host, credentials, protocol, port, canonical or path.
-  Review source changes; do not loosen the allowlist indiscriminately.
-- RESPONSE_TOO_LARGE / UNSUPPORTED_ENCODING: bounds/encoding mismatch; inspect
-  privately before raising limits.
-- DATABASE_CONFIG_MISSING / DATABASE_CONFIG_INVALID: configure a valid runtime
-  DATABASE_URL; local no-TLS mode is restricted to loopback hosts.
-- DATABASE_TLS_ERROR: check certificate trust, hostname and expiry, the bundled CA,
-  and NODE_EXTRA_CA_CERTS=/var/task/prod-ca-2021.crt.
-- DATABASE_AUTH_ERROR: check the database username/password and pooler credentials.
-- DATABASE_PERMISSION_ERROR: check runtime role grants and RLS policies.
-- DATABASE_DNS_ERROR / DATABASE_CONNECTION_ERROR: check hostname resolution, port,
-  database availability and outbound network connectivity.
-- DATABASE_TIMEOUT: a connection, query or lock timed out, or the server canceled
-  a query. Inspect database load and network access.
-- DATABASE_SCHEMA_ERROR / SOURCE_NOT_FOUND: check the target database, migrations
-  and Pitchfork source seed.
-- DATABASE_ERROR: unrecognized database failure. This fallback never copies raw
-  driver messages, SQL or parameters. Known PostgreSQL/Node codes are classified
-  through bounded Drizzle cause chains; unknown failures need private diagnostics.
-
-- RUN_DEADLINE: remaining run budget exhausted. Committed tracks remain. Inspect
-  slow requests/DB behavior before increasing work budget or Lambda timeout.
-
-Every IngestionError has a stable code and a fixed descriptive message in the form
-`CODE: explanation`. Failure logs include both `code` and `message`. Database
-classifications follow [PostgreSQL SQLSTATE codes](https://www.postgresql.org/docs/current/errcodes-appendix.html)
-and [Node system errors](https://nodejs.org/api/errors.html#common-system-errors).
-
-## Recovery
-
-Run the same source again only after the transient issue is resolved; upserts are
-idempotent. Partial failures clear validators so unchanged RSS entries are retried.
-A successful follow-up can contain only unchanged updates.
-
-Feed retention limits recovery. Entries removed before successful ingestion may
-require a separately designed, manually reviewed historical import. Do not mark
-a partial run successful merely to suppress alerts.
-
-After changing parsing logic, clear the source's HTTP validators in a reviewed
-database change so a 304 does not prevent reprocessing the current feed. Clearing
-the validators is not a migration and is not done automatically here.
-
-Run creation clears persisted validators before work, so an interrupted run is
-retried with a full feed fetch. Failed finalization can leave a running row; later
-runs do not close it automatically. Do not reset first-seen timestamps during recovery.
-
-## Alerts, logs and queues
-
-The Lambda prints a structured ingestion_completed summary and throws sanitized
-errors on failed/partial runs. Infrastructure alarms cover execution failures,
-throttles, Scheduler delivery failures, failed asynchronous destination delivery,
-and failure-queue depth. Supply a working existing SNS topic/subscriptions to
-receive notifications; otherwise alarms exist without notifications.
-
-No hourly database freshness monitor has been deployed. Inspect last_success_at
-or add a separately approved freshness check; a disabled schedule, persistent busy
-source, or no invocations can produce missing metrics rather than execution errors.
-
-Scheduler's delivery queue means Lambda could not accept an event. Lambda's
-execution queue contains failed accepted invocations. They are separate retry
-layers; retries and manual replays may duplicate work. Inspect and replay deliberately,
-never attach an uncontrolled automatic replay loop.
-
-Run records contain metadata/error codes only, not feed/review bodies or credentials.
-Lambda logs and dead-letter destination records remain operator-only. CloudWatch
-has configured retention; database run history has no automatic pruning in this
-version. Choose and review a retention policy before long-term production use.
-
-## Secrets and maintenance
-
-DATABASE_URL is resolved from the existing Secrets Manager JSON key at deployment.
-Rotation alone does not refresh Lambda's environment: follow infra/README.md's
-reviewed configuration-update procedure and verify new connectivity before
-retiring credentials. Restrict Lambda configuration readers as well as secret access.
-
-Disable scheduling for maintenance, then account for already accepted retries.
-Disabling Scheduler does not cancel queued Lambda events. Review retained logs
-and queues before cleanup; retained resources can continue to incur costs.
-
+Retry a failed inspection after fixing its cause. There is no need to clear HTTP
+validators manually while inspection mode is active. Re-enabling track writes
+requires a code change, validation of database upserts, and review of cache/retry
+behavior before relying on stored recommendations or an hourly schedule.
