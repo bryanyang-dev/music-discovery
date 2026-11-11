@@ -25,6 +25,12 @@ done
 repositoryRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repositoryRoot"
 
+certificatePath="$repositoryRoot/certs/prod-ca-2021.crt"
+if [[ ! -f "$certificatePath" || ! -r "$certificatePath" || ! -s "$certificatePath" ]]; then
+  echo "Missing or unreadable database CA certificate: certs/prod-ca-2021.crt. Nothing was uploaded." >&2
+  exit 1
+fi
+
 # Select only deployment fields; never print the function's environment variables.
 configuration="$(aws lambda get-function-configuration \
   --function-name "$functionName" "${awsOptions[@]}" \
@@ -53,7 +59,7 @@ cleanup() {
   return "$cleanupExitCode"
 }
 trap cleanup EXIT
-zip -j "$archivePath" dist/ingestion/index.cjs
+zip -j "$archivePath" dist/ingestion/index.cjs "$certificatePath"
 
 echo "Uploading handler to $functionName in $region..."
 # Reject the update if another deployment changed the function during our build.

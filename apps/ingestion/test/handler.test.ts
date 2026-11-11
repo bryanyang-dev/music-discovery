@@ -2,324 +2,268 @@ import type { Context } from "aws-lambda";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { fetchFeed } from "@music-discovery/rss";
-import { IngestionError, PITCHFORK_FEED_URL } from "@music-discovery/shared";
+import { IngestionError, PITCHFORK_FEED_URL, type IngestionStore, type RunResult, type TrackInput } from "@music-discovery/shared";
+import { fetchFeed, type HttpOptions } from "@music-discovery/rss";
 import { createHandler } from "../src/handler.ts";
+import { INGESTION_TIMING } from "../src/timing.ts";
 
-const fixture = await readFile(new URL("../../../packages/rss/test/fixtures/pitchfork.xml", import.meta.url), "utf8");
-
-function createTestLogger(logs: string[]) {
-  return {
-    log: (message: string) => logs.push(message),
-    warn: (message: string) => logs.push(message),
-    error: (message: string) => logs.push(message),
-  };
-}
-
-function createLambdaContext(remainingTimeMs: number): Context {
-  return {
-    callbackWaitsForEmptyEventLoop: false,
-    functionName: "musicRssFetcher",
-    functionVersion: "$LATEST",
-    invokedFunctionArn: "arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher",
-    memoryLimitInMB: "128",
-    awsRequestId: "test-request",
-    logGroupName: "/aws/lambda/musicRssFetcher",
-    logStreamName: "test-stream",
-    getRemainingTimeInMillis: () => remainingTimeMs,
-    done() {},
-    fail() {},
-    succeed() {},
-  };
-}
-
-test("handler fetches, parses, logs and returns RSS without database configuration", async () => {
-  const logs: string[] = [];
-  const handler = createHandler({
-    fetch: async (url, validators, options) => {
-      assert.equal(url, PITCHFORK_FEED_URL);
-      assert.deepEqual(validators, { etag: null, lastModified: null });
-      assert.ok(options?.signal);
-      assert.equal(options.attempts, 1);
-      return fetchFeed(url, validators, {
-        ...options,
-        fetcher: async () => new Response(fixture, { headers: { etag: '"fixture"' } }),
-      });
-    },
-    logger: createTestLogger(logs),
-  });
-
-  const result = await handler({ feedUrl: "https://untrusted.example/" });
-  assert.equal(result.notModified, false);
-  if (result.notModified) {
-    assert.fail("expected parsed RSS");
-  }
-  assert.ok(result.feed.entries.length > 0);
-  assert.equal(result.validators.etag, '"fixture"');
-  assert.equal(logs.length, 2);
-  assert.equal(JSON.parse(logs[0]!).event, "rss_fetch_started");
-  assert.equal(JSON.parse(logs[1]!).event, "rss_fetch_succeeded");
-  assert.deepEqual(JSON.parse(logs[1]!).response, JSON.parse(JSON.stringify(result)));
-});
-
-test("handler sanitizes fetch failures before logging and throwing", async () => {
-  const logs: string[] = [];
-  const handler = createHandler({
-    fetch: async () => { throw new Error("private connection detail"); },
-    logger: createTestLogger(logs),
-  });
-
-  await assert.rejects(handler(), /HTTP_ERROR/);
-  assert.deepEqual(logs.map((message) => JSON.parse(message)), [
-    { event: "rss_fetch_started", level: "INFO", requestId: null, attempt: 1 },
-    { event: "rss_fetch_attempt_failed", level: "WARN", requestId: null, attempt: 1, code: "HTTP_ERROR" },
-    { event: "rss_fetch_failed", level: "ERROR", requestId: null, attempt: 1, code: "HTTP_ERROR" },
-  ]);
-});
-
-test("invalid RSS is reported without logging its body", async () => {
-  const logs: string[] = [];
-  const handler = createHandler({
-    fetch: (url, validators, options) => fetchFeed(url, validators, {
-      ...options,
-      fetcher: async () => new Response("private malformed XML"),
-    }),
-    logger: createTestLogger(logs),
-  });
-
-  await assert.rejects(handler(), /INVALID_FEED/);
-  assert.deepEqual(logs.map((message) => JSON.parse(message)), [
-    { event: "rss_fetch_started", level: "INFO", requestId: null, attempt: 1 },
-    { event: "rss_fetch_attempt_failed", level: "WARN", requestId: null, attempt: 1, code: "INVALID_FEED" },
-    { event: "rss_fetch_failed", level: "ERROR", requestId: null, attempt: 1, code: "INVALID_FEED" },
-  ]);
-});
-
-test("an invocation too near its deadline fails before fetching RSS", async () => {
-  let fetched = false;
-  const logs: string[] = [];
-  const handler = createHandler({
-    fetch: async () => {
-      fetched = true;
-      throw new Error("must not fetch");
-    },
-    logger: createTestLogger(logs),
-  });
-
-  for (const remainingMs of [0, 100, 250]) {
-    await assert.rejects(handler({}, createLambdaContext(remainingMs)), /RUN_DEADLINE/);
-  }
-  assert.equal(fetched, false);
-  const events = logs.map((message) => JSON.parse(message));
-  assert.equal(events.filter((event) => event.event === "rss_fetch_aborted").length, 3);
-  assert.ok(events.every((event) => event.attempt === 0 && event.requestId === "test-request"));
-  assert.ok(!events.some((event) => event.event === "rss_fetch_max_attempts_reached"));
-});
-
-test("RSS uses a 30-second cap, a 250-millisecond response margin, and the same cancellation signal", async (context) => {
-  const durations: number[] = [];
-  const signal = new AbortController().signal;
-  context.mock.method(AbortSignal, "timeout", (duration: number) => {
-    durations.push(duration);
-    return signal;
-  });
-  const handler = createHandler({
-    fetch: async (_url, _validators, options) => {
-      assert.equal(options?.signal, signal);
-      return { notModified: false, validators: { etag: null, lastModified: null },
-        feed: { found: 0, duplicates: 0, entries: [], errors: [] } };
-    },
-    logger: createTestLogger([]),
-  });
-
-  await handler();
-  for (const remainingMs of [60_000, 30_000, 3_000, 251]) {
-    await handler({}, createLambdaContext(remainingMs));
-  }
-  assert.deepEqual(durations, [30_000, 30_000, 29_750, 2_750, 1]);
-});
-
-const emptyResponse = {
+const html = await readFile(new URL("../../../packages/rss/test/fixtures/review.html", import.meta.url), "utf8");
+const sourceUrl = "https://pitchfork.com/reviews/tracks/tinashe-popstar/";
+// The logged response shape, with dates represented as Date objects by fetchFeed.
+const response = {
   notModified: false as const,
   validators: { etag: null, lastModified: null },
-  feed: { found: 0, duplicates: 0, entries: [], errors: [] },
+  feed: { found: 1, duplicates: 0, errors: [], entries: [{
+    sourceUrl, sourceGuid: "6abad5fba2a3ade8cdd0bd3e", reviewTitle: "“Popstar”",
+    reviewAuthor: "Walden Green", reviewPublishedAt: new Date("2026-09-28T21:11:22.000Z"),
+    summary: "The title track.", imageUrl: "https://media.pitchfork.com/photos/popstar.jpg",
+  }] },
 };
 
-test("transient failures get exactly three retries with exponential backoff and correlated logs", async () => {
-  const logs: string[] = [];
-  const delays: number[] = [];
-  let attempts = 0;
-  let sharedSignal: AbortSignal | undefined;
-  const failure = new IngestionError("NETWORK_ERROR", 0);
-  const handler = createHandler({
-    fetch: async (_url, _validators, options) => {
-      attempts++;
-      assert.equal(options?.attempts, 1);
-      sharedSignal ??= options?.signal;
-      assert.equal(options?.signal, sharedSignal);
-      throw failure;
+function setup() {
+  const logs: Record<string, unknown>[] = [];
+  const tracks: TrackInput[] = [];
+  const finished: RunResult[] = [];
+  let closed = 0;
+  let signal: AbortSignal | undefined;
+  const source = { id: "source", feedUrl: PITCHFORK_FEED_URL, enabled: true, etag: '"cached"', lastModified: null };
+  const store: IngestionStore = {
+    async getSource() { return source; },
+    async beginRun() { return "run"; },
+    async recordDiscovery() {},
+    async rejectEntry() {},
+    async upsertTrack(_source, _run, track) { tracks.push(track); return "inserted"; },
+    async finishRun(_source, result) { finished.push(result); return result; },
+  };
+  const dependencies = {
+    databaseUrl: "postgres://unused",
+    connect: (_url: string, options: { signal: AbortSignal }) => {
+      signal = options.signal;
+      return { store, async close() { closed++; } };
     },
-    sleep: async (delayMs, signal) => {
-      assert.equal(signal, sharedSignal);
-      delays.push(delayMs);
+    fetch: (async () => response) as typeof fetchFeed,
+    http: { fetcher: async () => new Response(html.replaceAll("example-a-song", "tinashe-popstar")) } as HttpOptions,
+    sleep: async (_ms: number, _signal: AbortSignal) => {},
+    logger: {
+      log: (message: string) => { logs.push(JSON.parse(message)); },
+      warn: (message: string) => { logs.push(JSON.parse(message)); },
+      error: (message: string) => { logs.push(JSON.parse(message)); },
     },
-    logger: createTestLogger(logs),
-  });
+  };
+  return { dependencies, store, source, tracks, finished, logs, closed: () => closed, signal: () => signal };
+}
 
-  await assert.rejects(handler({}, createLambdaContext(30_000)), (error) => error === failure);
+const context = (remainingMs: number) => ({ awsRequestId: "request", getRemainingTimeInMillis: () => remainingMs }) as Context;
+
+test("handler logs enriched tracks without writing them to the database", async () => {
+  const state = setup();
+  state.dependencies.fetch = async (url, validators, options) => {
+    assert.equal(url, PITCHFORK_FEED_URL);
+    assert.deepEqual(validators, { etag: null, lastModified: null });
+    assert.equal(options?.attempts, 1);
+    return response;
+  };
+  const result = await createHandler(state.dependencies)({}, context(300_000));
+  assert.equal(result.status, "succeeded");
+  assert.equal(state.tracks.length, 0);
+  const event = state.logs.find((log) => log.event === "track_extracted");
+  const track = event?.track as TrackInput;
+  assert.equal(track.sourceGuid, response.feed.entries[0]?.sourceGuid);
+  assert.equal(track.summary, "The title track.");
+  assert.ok(track.artists.length);
+  assert.equal(event?.writeSkipped, true);
+  assert.equal(state.finished[0]?.inserted, 0);
+  assert.equal(state.closed(), 1);
+  assert.ok(state.logs.every((log) => log.requestId === "request"));
+});
+
+test("transient RSS failures retain three retries and exponential backoff", async () => {
+  const state = setup();
+  let attempts = 0;
+  const delays: number[] = [];
+  state.dependencies.fetch = async () => { attempts++; throw new IngestionError("NETWORK_ERROR", 0); };
+  state.dependencies.sleep = async (ms) => { delays.push(ms); };
+  await assert.rejects(createHandler(state.dependencies)(), /NETWORK_ERROR/);
   assert.equal(attempts, 4);
   assert.deepEqual(delays, [1_000, 2_000, 4_000]);
-  const events = logs.map((message) => JSON.parse(message));
-  assert.ok(events.every((event) => event.requestId === "test-request"));
-  assert.deepEqual(events.filter((event) => event.event === "rss_fetch_started").map((event) => event.attempt), [1, 2, 3, 4]);
-  assert.equal(events.filter((event) => event.event === "rss_fetch_attempt_failed").length, 4);
-  assert.equal(events.filter((event) => event.event === "rss_fetch_retry_scheduled").length, 3);
-  assert.deepEqual(events.filter((event) => event.event === "rss_fetch_max_attempts_reached"), [
-    { event: "rss_fetch_max_attempts_reached", level: "ERROR", requestId: "test-request", attempt: 4, maxAttempts: 4, code: "NETWORK_ERROR" },
-  ]);
-  assert.ok(!events.some((event) => event.event === "rss_fetch_aborted"));
-  assert.deepEqual(events.at(-1), { event: "rss_fetch_failed", level: "ERROR", requestId: "test-request", attempt: 4, code: "NETWORK_ERROR" });
+  assert.equal(state.finished[0]?.status, "failed");
+  assert.equal(state.closed(), 1);
 });
 
-test("a retry can succeed and logs one success without a final failure", async () => {
-  const logs: string[] = [];
+test("RSS retries honor Retry-After and can recover", async () => {
+  const state = setup();
   let attempts = 0;
-  const handler = createHandler({
-    fetch: async () => {
-      attempts++;
-      if (attempts < 3) {
-        throw new IngestionError("REQUEST_TIMEOUT", 0);
-      }
-      return emptyResponse;
-    },
-    sleep: async () => {},
-    logger: createTestLogger(logs),
-  });
-
-  assert.equal(await handler(), emptyResponse);
-  assert.equal(attempts, 3);
-  const events = logs.map((message) => JSON.parse(message));
-  assert.equal(events.filter((event) => event.event === "rss_fetch_succeeded").length, 1);
-  assert.equal(events.at(-1).attempt, 3);
-  assert.ok(!events.some((event) => event.event === "rss_fetch_failed"));
-  assert.ok(!events.some((event) => event.event === "rss_fetch_max_attempts_reached" || event.event === "rss_fetch_aborted"));
-});
-
-test("permanent HTTP errors and invalid feeds never retry", async () => {
-  for (const failure of [new IngestionError("HTTP_ERROR"), new IngestionError("INVALID_FEED")]) {
-    let attempts = 0;
-    const handler = createHandler({
-      fetch: async () => { attempts++; throw failure; },
-      sleep: async () => { assert.fail("must not retry"); },
-      logger: createTestLogger([]),
-    });
-    await assert.rejects(handler(), (error) => error === failure);
-    assert.equal(attempts, 1);
-  }
-});
-
-test("retry delay honors Retry-After instead of retrying earlier", async () => {
   const delays: number[] = [];
-  let attempts = 0;
-  const handler = createHandler({
-    fetch: async () => {
-      attempts++;
-      if (attempts === 1) {
-        throw new IngestionError("HTTP_ERROR", 5_000);
-      }
-      return emptyResponse;
-    },
-    sleep: async (delayMs) => { delays.push(delayMs); },
-    logger: createTestLogger([]),
-  });
-  await handler();
+  state.dependencies.fetch = async () => {
+    if (++attempts === 1) throw new IngestionError("HTTP_ERROR", 5_000);
+    return response;
+  };
+  state.dependencies.sleep = async (ms) => { delays.push(ms); };
+  assert.equal((await createHandler(state.dependencies)()).status, "succeeded");
   assert.deepEqual(delays, [5_000]);
 });
 
-test("exhausting the deadline during backoff stops retries and logs a final deadline failure", async (context) => {
-  const controller = new AbortController();
-  context.mock.method(AbortSignal, "timeout", () => controller.signal);
-  const logs: string[] = [];
-  let attempts = 0;
-  const handler = createHandler({
-    fetch: async () => { attempts++; throw new IngestionError("NETWORK_ERROR", 0); },
-    sleep: async () => { controller.abort(); throw controller.signal.reason; },
-    logger: createTestLogger(logs),
-  });
-  await assert.rejects(handler(), /RUN_DEADLINE/);
-  assert.equal(attempts, 1);
-  const events = logs.map((message) => JSON.parse(message));
-  assert.deepEqual(events.filter((event) => event.event === "rss_fetch_aborted"), [
-    { event: "rss_fetch_aborted", level: "ERROR", requestId: null, attempt: 1, code: "RUN_DEADLINE" },
-  ]);
-  assert.ok(!events.some((event) => event.event === "rss_fetch_max_attempts_reached"));
-  assert.deepEqual(JSON.parse(logs.at(-1)!), { event: "rss_fetch_failed", level: "ERROR", requestId: null, attempt: 1, code: "RUN_DEADLINE" });
+test("bad review metadata is recorded and later entries can still be logged", async () => {
+  const state = setup();
+  state.dependencies.fetch = async () => ({ ...response, feed: { ...response.feed, found: 2,
+    entries: [{ ...response.feed.entries[0]!, sourceUrl: "https://pitchfork.com/reviews/bad/" }, ...response.feed.entries] } });
+  state.dependencies.http.fetcher = async (input) => new Response(String(input).includes("/bad/") ? "<html>bad</html>" : html.replaceAll("example-a-song", "tinashe-popstar"));
+  const result = await createHandler(state.dependencies)();
+  assert.equal(result.status, "partial_failure");
+  assert.equal(state.finished[0]?.rejected, 1);
+  assert.equal(state.tracks.length, 0);
+  assert.equal(state.logs.filter((log) => log.event === "track_extracted").length, 1);
 });
 
-test("an in-flight abort logs one abort and one terminal failure without exposing the abort reason", async (context) => {
-  const controller = new AbortController();
-  context.mock.method(AbortSignal, "timeout", () => controller.signal);
-  const logs: string[] = [];
-  const handler = createHandler({
-    fetch: async () => {
-      controller.abort(new Error("private abort detail"));
-      throw controller.signal.reason;
-    },
-    sleep: async () => { assert.fail("must not retry after abort"); },
-    logger: createTestLogger(logs),
-  });
-
-  await assert.rejects(handler({}, createLambdaContext(3_000)), /RUN_DEADLINE/);
-  const events = logs.map((message) => JSON.parse(message));
-  assert.deepEqual(events.filter((event) => event.event === "rss_fetch_aborted"), [
-    { event: "rss_fetch_aborted", level: "ERROR", requestId: "test-request", attempt: 1, code: "RUN_DEADLINE" },
-  ]);
-  assert.equal(events.filter((event) => event.event === "rss_fetch_failed").length, 1);
-  assert.ok(!events.some((event) => event.event === "rss_fetch_max_attempts_reached"));
-  assert.ok(logs.every((message) => !message.includes("private")));
+test("304 skips review fetches and writes", async () => {
+  const state = setup();
+  const handler = createHandler({ ...state.dependencies, fetch: async () => ({ notModified: true, validators: response.validators }),
+    http: { fetcher: async () => { assert.fail("must not fetch review"); } } });
+  const result = await handler();
+  assert.equal(result.status, "succeeded");
+  assert.equal(state.finished[0]?.notModified, true);
+  assert.equal(state.tracks.length, 0);
+  assert.equal(state.closed(), 1);
 });
 
-test("HTTP retry loop is disabled in the real feed fetcher", async () => {
-  let requests = 0;
-  const delays: number[] = [];
-  const handler = createHandler({
-    fetch: (url, validators, options) => fetchFeed(url, validators, {
-      ...options,
-      fetcher: async () => { requests++; return new Response("unavailable", { status: 503 }); },
-    }),
-    sleep: async (delayMs) => { delays.push(delayMs); },
-    logger: createTestLogger([]),
-  });
-  await assert.rejects(handler(), /HTTP_ERROR/);
-  assert.equal(requests, 4);
-  assert.deepEqual(delays, [1_000, 2_000, 4_000]);
+test("disabled sources skip without fetching", async () => {
+  const state = setup();
+  state.store.getSource = async () => null;
+  state.dependencies.fetch = async () => { assert.fail("must not fetch"); };
+  assert.deepEqual(await createHandler(state.dependencies)(), { status: "skipped", reason: "disabled" });
+  assert.equal(state.closed(), 1);
 });
 
-test("default logger sends normal, retry, and terminal events to the matching console method", async (context) => {
-  const messages: { method: string; payload: Record<string, unknown> }[] = [];
-  for (const method of ["log", "warn", "error"] as const) {
-    context.mock.method(console, method, (message: string) => {
-      messages.push({ method, payload: JSON.parse(message) });
+test("missing configuration and database errors are sanitized", async () => {
+  for (const missingConfig of [true, false]) {
+    const state = setup();
+    const handler = createHandler({ ...state.dependencies, databaseUrl: missingConfig ? "" : "postgres://unused",
+      connect: () => { throw new Error("private credentials"); } });
+    const expectedCode = missingConfig ? "DATABASE_CONFIG_MISSING" : "DATABASE_ERROR";
+    await assert.rejects(handler(), (error: unknown) => {
+      assert.ok(error instanceof IngestionError);
+      assert.equal(error.code, expectedCode);
+      return true;
     });
+    const log = state.logs.find((event) => event.event === "ingestion_failed");
+    assert.equal(log?.code, expectedCode);
+    assert.equal(log?.message, new IngestionError(expectedCode).message);
+    assert.ok(!JSON.stringify(state.logs).includes("private"));
   }
-  const failing = createHandler({
-    fetch: async () => { throw new IngestionError("NETWORK_ERROR", 0); },
-    sleep: async () => {},
-  });
-  await assert.rejects(failing({}, createLambdaContext(30_000)), /NETWORK_ERROR/);
-  const succeeding = createHandler({ fetch: async () => emptyResponse });
-  await succeeding({}, createLambdaContext(30_000));
-  await assert.rejects(succeeding({}, createLambdaContext(100)), /RUN_DEADLINE/);
+});
 
-  const expectedLevels = { log: "INFO", warn: "WARN", error: "ERROR" };
-  for (const method of ["log", "warn", "error"] as const) {
-    const matching = messages.filter((message) => message.method === method);
-    assert.ok(matching.length > 0);
-    assert.ok(matching.every((message) => message.payload.level === expectedLevels[method]));
+test("cleanup preserves a primary failure and reports a standalone close failure", async () => {
+  for (const workFails of [true, false]) {
+    const state = setup();
+    if (workFails) state.store.getSource = async () => { throw new IngestionError("SOURCE_NOT_FOUND"); };
+    const handler = createHandler({ ...state.dependencies, connect: () => ({ store: state.store,
+      async close() { throw new Error("private close details"); } }) });
+    await assert.rejects(handler(), (error: unknown) => {
+      assert.ok(error instanceof IngestionError);
+      assert.equal(error.code, workFails ? "SOURCE_NOT_FOUND" : "DATABASE_ERROR");
+      if (workFails) assert.deepEqual(error.cleanupErrors, ["DATABASE_ERROR"]);
+      return true;
+    });
+    assert.ok(!JSON.stringify(state.logs).includes("private"));
   }
-  for (const event of ["rss_fetch_aborted", "rss_fetch_max_attempts_reached", "rss_fetch_failed"]) {
-    assert.ok(messages.some((message) => message.method === "error" && message.payload.event === event));
+});
+
+test("work is capped and leaves the database cleanup reserve before Lambda termination", async (t) => {
+  const durations: number[] = [];
+  const signal = new AbortController().signal;
+  t.mock.method(AbortSignal, "timeout", (ms: number) => { durations.push(ms); return signal; });
+  const state = setup();
+  state.dependencies.fetch = async () => ({ ...response, feed: { ...response.feed, entries: [] } });
+  await createHandler(state.dependencies)({}, context(300_000));
+  await createHandler(state.dependencies)({}, context(30_000));
+  assert.deepEqual(durations, [240_000, 30_000, 30_000 - INGESTION_TIMING.cleanupReserveMs, 30_000]);
+  await assert.rejects(createHandler(state.dependencies)({}, context(INGESTION_TIMING.cleanupReserveMs)), /RUN_DEADLINE/);
+});
+
+test("database failures do not retry the RSS request", async () => {
+  const state = setup();
+  let fetches = 0;
+  state.dependencies.fetch = async () => { fetches++; return response; };
+  state.store.recordDiscovery = async () => { throw new Error("private SQL"); };
+  await assert.rejects(createHandler(state.dependencies)(), /DATABASE_ERROR/);
+  assert.equal(fetches, 1);
+  assert.equal(state.finished[0]?.status, "failed");
+  assert.equal(state.closed(), 1);
+});
+
+test("cancellation after RSS fetch stops enrichment and still finalizes and closes", async (t) => {
+  const controller = new AbortController();
+  t.mock.method(AbortSignal, "timeout", () => controller.signal);
+  const state = setup();
+  state.dependencies.fetch = async () => { controller.abort(new Error("private reason")); return response; };
+  state.dependencies.http.fetcher = async () => { assert.fail("must not enrich after cancellation"); };
+  await assert.rejects(createHandler(state.dependencies)(), /RUN_DEADLINE/);
+  assert.equal(state.finished[0]?.status, "failed");
+  assert.equal(state.closed(), 1);
+  assert.ok(!JSON.stringify(state.logs).includes("private"));
+});
+
+test("run finalization failures still close the database", async () => {
+  const state = setup();
+  state.store.finishRun = async () => { throw new Error("private SQL"); };
+  await assert.rejects(createHandler(state.dependencies)(), /DATABASE_ERROR/);
+  assert.equal(state.closed(), 1);
+});
+
+test("the handler parses RSS XML before logging enriched tracks", async () => {
+  const state = setup();
+  const xml = await readFile(new URL("../../../packages/rss/test/fixtures/pitchfork.xml", import.meta.url), "utf8");
+  const result = await createHandler({ ...state.dependencies, fetch: fetchFeed, http: {
+    fetcher: async (input) => new Response(String(input).includes("/feed/") ? xml : html),
+  } })();
+  assert.equal(result.status, "succeeded");
+  assert.equal(state.tracks.length, 0);
+  assert.equal(state.finished[0]?.inserted, 0);
+});
+
+test("logs the full parsed feed and every extracted track with the request ID", async () => {
+  const state = setup();
+  const entries = Array.from({ length: 3 }, (_, index) => ({
+    ...response.feed.entries[0]!,
+    sourceUrl: `https://pitchfork.com/reviews/tracks/example-${index}/`,
+    sourceGuid: `guid-${index}`,
+  }));
+  const feed = { ...response.feed, entries, found: entries.length };
+  state.dependencies.fetch = async () => ({ ...response, feed });
+  state.dependencies.http.fetcher = async (input) => new Response(
+    html.replaceAll("example-a-song", new URL(String(input)).pathname.split("/").at(-2)!),
+  );
+  await createHandler(state.dependencies)({}, context(300_000));
+  const feeds = state.logs.filter((log) => log.event === "feed_parsed");
+  assert.equal(feeds.length, 1);
+  assert.deepEqual(feeds[0]?.feed, JSON.parse(JSON.stringify(feed)));
+  const tracks = state.logs.filter((log) => log.event === "track_extracted");
+  assert.equal(tracks.length, entries.length);
+  assert.deepEqual(tracks.map((log) => (log.track as TrackInput).sourceGuid), entries.map((entry) => entry.sourceGuid));
+  assert.ok([...feeds, ...tracks].every((log) => log.level === "INFO" && log.requestId === "request"));
+  assert.equal(state.tracks.length, 0);
+});
+
+test("specific database messages survive startup and failed-run finalization into logs and Lambda errors", async () => {
+  for (const code of ["DATABASE_TLS_ERROR", "DATABASE_AUTH_ERROR", "DATABASE_PERMISSION_ERROR"] as const) {
+    for (const phase of ["startup", "run"]) {
+      const state = setup();
+      const failure = new IngestionError(code);
+      if (phase === "startup") {
+        state.store.getSource = async () => { throw failure; };
+      } else {
+        state.store.recordDiscovery = async () => { throw failure; };
+      }
+      await assert.rejects(createHandler(state.dependencies)(), (error: unknown) => {
+        assert.ok(error instanceof IngestionError);
+        assert.equal(error.code, code);
+        assert.equal(error.message, failure.message);
+        return true;
+      });
+      const log = state.logs.find((event) => event.event === "ingestion_failed");
+      assert.equal(log?.code, code);
+      assert.equal(log?.message, failure.message);
+      assert.equal(state.closed(), 1);
+    }
   }
-  assert.ok(messages.some((message) => message.method === "warn" && message.payload.event === "rss_fetch_retry_scheduled"));
-  assert.ok(messages.some((message) => message.method === "log" && message.payload.event === "rss_fetch_succeeded"));
 });

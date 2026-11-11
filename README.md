@@ -1,19 +1,20 @@
 # Music discovery
 
-Fetch and parse Pitchfork Best New Tracks with a TypeScript AWS Lambda handler.
-The current handler logs and returns RSS data without database access. PostgreSQL
-storage and review-page enrichment are implemented separately. The initial schema
-has been migrated to Supabase; the handler is not yet connected to it.
+Fetch Pitchfork Best New Tracks and enrich each entry from its review page using
+TypeScript and AWS Lambda. The handler logs parsed feeds and tracks, records runs
+in PostgreSQL, and closes database connections after each invocation. Track
+upserts are temporarily disabled while reviewing extracted metadata.
 
-The latest local handler includes retries, deadline handling, and severity-based
-logging. It has not yet been uploaded to the current target, `musicRssFetcher`.
+The Supabase schema and source seed have been migrated. The upload task packages
+the handler and database CA certificate for `musicRssFetcher`; configure
+`DATABASE_URL` and `NODE_EXTRA_CA_CERTS` in the Lambda environment separately.
 
 ## Structure
 
 ```text
-apps/ingestion/src/handler.ts  RSS-only Lambda entry point
+apps/ingestion/src/handler.ts  Database ingestion Lambda entry point
 apps/ingestion/src/local.ts    Local RSS and enriched-track previews
-apps/ingestion/src/run.ts      Database ingestion service, not wired to the handler
+apps/ingestion/src/run.ts      Feed enrichment, logging and run tracking
 apps/ingestion/src/timing.ts   Database ingestion work limit
 packages/rss                  HTTP, RSS parsing, review metadata extraction
 packages/db                   PostgreSQL schema, migrations, and persistence
@@ -90,11 +91,16 @@ pnpm upload:lambda musicRssFetcher us-east-2 music-discovery
 
 The function must already exist with Node.js 24, ZIP packaging, handler
 `index.handler`, durable execution disabled, and an execution role with CloudWatch
-logging permissions. A 30-second timeout is recommended; the default three seconds
-may be too short for a live RSS request. No VPC or database settings are needed.
+logging permissions. Configure `DATABASE_URL` with runtime database credentials and
+network access to PostgreSQL. A 300-second timeout is recommended for sequential
+review enrichment; the handler caps work at 240 seconds and reserves 24.25 seconds
+for database cleanup and return. Set `NODE_EXTRA_CA_CERTS` to
+`/var/task/prod-ca-2021.crt` in the Lambda environment to trust the bundled
+Supabase CA certificate.
 
 The script uses already-installed AWS CLI, pnpm, and zip. It checks the target,
-then typechecks, tests, builds, smoke-tests, packages `index.cjs` at the ZIP root,
+then typechecks, tests, builds, smoke-tests, packages `index.cjs` and
+`certs/prod-ca-2021.crt` at the ZIP root,
 updates `$LATEST`, and waits for the update to complete. The caller needs
 `lambda:GetFunctionConfiguration`, `lambda:GetFunction`, and
 `lambda:UpdateFunctionCode` on the target. A named profile is passed to every AWS
@@ -108,7 +114,9 @@ versions, move aliases, or invoke the function. Test manually with `{}` afterwar
 
 For a manual console upload, `pnpm build:lambda` writes
 `dist/ingestion/index.cjs`, exporting `handler`. The bundle contains the RSS
-runtime dependencies; no `node_modules` upload is needed.
+and database runtime dependencies; no `node_modules` upload is needed. Include
+`certs/prod-ca-2021.crt` beside `index.cjs` in manual uploads as well. The upload
+script fails before contacting AWS if this certificate is missing or empty.
 
 ## Supabase
 
@@ -129,11 +137,23 @@ NODE_EXTRA_CA_CERTS="$PWD/certs/prod-ca-2021.crt" pnpm db:migrate
 loopback connections. Generation uses `drizzle.config.ts` and needs no credentials.
 Drizzle Kit owns migration execution, connection lifecycle and error reporting.
 
-The current handler does not call `ingestPitchfork` or write to PostgreSQL. Setting
-environment variables or running `pnpm ingest` does not enable database ingestion.
+Track writes are temporarily commented out for inspection. The handler emits
+`track_extracted` logs with enriched track metadata and `writeSkipped: true`.
+Database run tracking remains active, so `DATABASE_URL` is still required.
+Feed validators are bypassed and cleared so repeated runs log every track;
+inserted, updated and unchanged counts remain zero until upserts are restored.
+
+The handler and `pnpm ingest` call `ingestPitchfork` using `DATABASE_URL`. Each RSS
+entry is enriched from its review page to obtain the required artist metadata
+and logged for inspection. The database store supports upserts by source and
+canonical review URL when track writes are restored. The handler returns a run summary
+with inserted, updated, unchanged and rejected counts. Invalid reviews are recorded
+without blocking later entries. Failed runs throw sanitized errors after recording
+the run; connections close on success and failure.
+
 The schema and Pitchfork source seed are deployed with RLS enabled. Runtime-role
-permissions/RLS policies, integration testing, and wiring the service into Lambda
-remain to be completed.
+permissions/RLS policies and hosted ingestion verification still need to be checked
+before a production run. No infrastructure deployment is part of this code change.
 
 The initial migration creates only `ingestion_sources`, `tracks`, and
 `ingestion_runs`, and seeds the Pitchfork source. The unused feeds/articles schema

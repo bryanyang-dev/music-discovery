@@ -40,7 +40,7 @@ export function boundDatabaseOperation<Result>(
 
     const onAbort = () => stop("RUN_DEADLINE");
     const operationTimeoutMs = options.timeoutMs ?? DATABASE_POLICY.operationTimeoutMs;
-    const operationTimer = setTimeout(() => stop("DATABASE_ERROR"), operationTimeoutMs);
+    const operationTimer = setTimeout(() => stop("DATABASE_TIMEOUT"), operationTimeoutMs);
     options.signal?.addEventListener("abort", onAbort, { once: true });
 
     if (options.signal?.aborted) {

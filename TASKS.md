@@ -542,3 +542,107 @@ This section is updated as each task progresses, including verification evidence
 - User approved committing the public Supabase root CA certificate. Verified it is
   a single X.509 CA certificate valid through April 2031 with no private-key block.
   Git ignores other files under certs/ and explicitly includes prod-ca-2021.crt.
+
+## Connect RSS handler to database ingestion
+
+- Wired the Lambda/local handler to the existing ingestion service and PostgreSQL
+  store using DATABASE_URL. Parsed feed entries are enriched from review pages for
+  required artist/title metadata and upserted by source and canonical review URL.
+- Retained correlated RSS logs, three transient retries, exponential backoff and
+  Retry-After. Feed fetching now uses persisted source validators; only successful
+  runs save validators. The handler returns run counts and throws on failed runs.
+- Added runtime deadline propagation with a 240-second work cap and a 24.25-second
+  reserve derived from database termination/finalization/close limits. Connections
+  close on every path; cleanup failures preserve primary failures. Terminal errors
+  precede entry issues in failed run summaries so the handler reports the cause.
+- Updated operational documentation and handler/bundle regressions for the logged
+  feed shape, XML-to-store flow, metadata failures, 304, retries, database failures,
+  cancellation, finalization and connection cleanup.
+- Verification: typecheck; 72 application/config/schema tests across full and
+  affected-suite runs; 26 infrastructure/mocked-upload tests; three rebuilt Lambda
+  smoke tests; Git whitespace checks passed. Live PostgreSQL integration tests were
+  not run. No dependencies installed, remote migrations applied, Lambda uploaded,
+  infrastructure deployed or live tracks ingested.
+
+## Simplify cancellation ownership
+
+- Removed assertWorkCanContinue and repeated cancellation checks from run.ts.
+  HTTP and database operations already enforce the shared signal at their own
+  boundaries; orchestration now relies on those guarantees. Removed signal
+  parameters used only by those redundant checks.
+- Added a review-cancellation regression proving cancellation fails/finalizes the
+  run without rejecting an entry, writing a track or retaining cache validators.
+  The expired-budget test now exercises the HTTP boundary directly.
+- Verification: typecheck, 49 relevant application/HTTP/database cancellation
+  tests, rebuilt Lambda bundle and three bundle smoke tests passed. No live
+  database ingestion, deployment or dependency installation performed.
+
+## Temporarily log tracks instead of upserting
+
+- Added structured track_extracted logs with enriched metadata, request ID in the
+  handler, and writeSkipped: true. Commented out the track upsert and write-counter
+  increment in processFeedEntries for inspection. Run tracking remains active.
+- Temporarily bypass feed validators and clear them on finalization, ensuring
+  repeated inspection and later restoration of writes cannot skip unsaved tracks.
+- Updated regressions for zero track writes/counts, metadata logging and continued
+  processing after a bad review. Updated README and operations guidance.
+- Verification: typecheck, 27 ingestion tests, rebuilt Lambda bundle and three
+  bundle smoke tests passed; Git whitespace check passed. No deployment, live
+  ingestion, database migration or dependency installation performed.
+
+## Log all parsed feeds and tracks
+
+- Added feed_parsed logging for the complete parsed feed, including every accepted
+  entry, counts and parsing issues. Retained one track_extracted event per parsed
+  track. Handler events include the Lambda request ID; direct service calls and
+  local preview/fixture commands also log parsed feeds and tracks.
+- Track upserts remain commented out. Run tracking remains active.
+- Verification: typecheck, 28 ingestion tests, rebuilt Lambda and three bundle
+  smoke tests passed. Local fixture preview emitted feed and track events. Added
+  regression coverage for full feed payload and all tracks in a multi-entry feed.
+  No deployment, live ingestion or dependency installation performed.
+
+## Include the database CA in Lambda uploads
+
+- The upload task now includes certs/prod-ca-2021.crt at the archive root beside
+  index.cjs. A missing, unreadable or empty certificate fails before AWS calls.
+- Documented the required Lambda environment setting:
+  NODE_EXTRA_CA_CERTS=/var/task/prod-ca-2021.crt. The upload remains code-only and
+  does not alter environment variables or other Lambda configuration.
+- Packaging tests inspect the real ZIP entries and verify the certificate bytes,
+  plus missing/empty-certificate failure paths. All 11 mocked upload tests,
+  typecheck, rebuilt Lambda and three bundle smoke tests, shell syntax and Git
+  whitespace checks passed. No AWS upload or configuration change performed.
+
+## Make ingestion failures diagnosable
+
+- Added a centralized fixed message for every ingestion error code; Error.message
+  now contains CODE: explanation, preserving stable codes and retry metadata.
+- Split database configuration, TLS, authentication, permission/RLS, DNS,
+  connection, timeout/cancellation and schema failures into specific codes.
+  Database operations classify recognized PostgreSQL/Node driver codes through
+  bounded Drizzle cause chains; unknown errors remain a safe DATABASE_ERROR.
+- Failure/retry/close logs now include descriptive messages. Missing DATABASE_URL
+  and invalid connection configuration have distinct actionable messages.
+  Raw driver messages, SQL, parameters and original causes are never copied into
+  exposed errors. Primary failures remain intact when cleanup fails.
+- Added tests for all message defaults, direct/wrapped driver classification,
+  credential protection, cyclic/unknown errors and handler propagation before and
+  after run creation. Updated timeout/configuration regressions and operations docs.
+- Verification: typecheck; full suite (79 application and 27 infrastructure/upload
+  tests), followed by 18 targeted tests including the added propagation test;
+  rebuilt Lambda and three bundle smoke tests; Git whitespace checks passed.
+  No live database tests, deployment, migrations or dependency installation.
+
+## Commit preparation — Lambda feed inspection and diagnostics
+
+- Reviewed the complete changeset: database run tracking and bounded cleanup,
+  feed/track inspection logs with track writes still disabled, safe descriptive
+  ingestion errors, and CA certificate packaging for Lambda uploads.
+- Corrected stale RSS-only documentation and generic error wording that conflicted
+  with credential-leak regression checks. No CDK dependency changes remain from
+  the canceled setup attempt.
+- Final verification: pnpm typecheck, pnpm test (80 application/config/schema tests
+  and 27 infrastructure/mocked-upload tests), pnpm test:bundle (rebuilt Lambda plus
+  three smoke tests), and Git whitespace checks passed. Live database integration
+  was not run; no AWS deployment or database changes performed.

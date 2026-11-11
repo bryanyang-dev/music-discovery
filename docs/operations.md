@@ -1,28 +1,29 @@
 # Ingestion operations
 
-The current `musicRssFetcher` target is a regular RSS-only Lambda in `us-east-2`.
-The local handler includes retries and structured logs; use `pnpm upload:lambda`
-to deploy it. Supabase is not yet connected and the hourly infrastructure template
-has not been deployed.
+The local `musicRssFetcher` handler now performs database ingestion. Deploy with
+`pnpm upload:lambda` after configuring `DATABASE_URL`, trusted database certificates,
+and a suitable function timeout (300 seconds recommended). No deployment or live
+track ingestion has been performed as part of this change.
 
-## Current RSS checks
+Track upserts are currently commented out. Inspect `track_extracted` logs with
+`writeSkipped: true`; these include enriched metadata and the Lambda request ID.
+Run tracking still writes to the database. Feed caching is bypassed and validators
+are cleared so repeated inspection does not skip tracks. Write counts remain zero.
 
-- Test with `{}` and inspect the returned parsed response.
-- Check CloudWatch logs for `rss_fetch_succeeded` or `rss_fetch_failed`, grouped by
-  requestId. INFO identifies starts/successes, WARN identifies retry activity, and
-  ERROR identifies aborts, exhausted attempts, and terminal failures.
-- `rss_fetch_aborted` indicates deadline exhaustion; `rss_fetch_max_attempts_reached`
-  means the initial request and all three retries failed. Both precede the final
-  failure event. Inspect the sanitized code and configured timeout.
-- Individual invalid entries appear in the successful response's feed.errors;
-  that is distinct from an invocation-level failure.
-- A 30-second function timeout is recommended. The handler leaves 250 milliseconds
-  for logging/return. The upload script does not change the function timeout.
+## Ingestion checks
 
-## Future database pipeline
-
-The remaining sections describe the planned database worker. They become applicable
-when Supabase is configured and the handler is wired to the ingestion service.
+- Test with `{}` and inspect the returned run summary and `ingestion_completed` log.
+- `rss_fetch_succeeded` records the parsed feed. Each entry is then enriched from
+  its review page and logged; required artist metadata is not present in RSS.
+- Inspect rejected counts and track_extracted events. Write counts remain zero
+  while upserts are disabled; a bad review does not block later entries.
+- RSS fetches retain three transient retries, exponential backoff and Retry-After.
+  The RSS phase is capped at 30 seconds within the overall work deadline.
+- Work stops 24.25 seconds before the Lambda deadline (or after 240 seconds), leaving
+  time for operation termination, run finalization, connection close and return.
+- `ingestion_failed` and `database_close_failed` contain sanitized error codes and
+  descriptive messages.
+  Failed runs throw after finalization and connection cleanup.
 
 ## Before first real run
 
@@ -91,10 +92,29 @@ function concurrency to one; other invocation paths must be considered separatel
   Review source changes; do not loosen the allowlist indiscriminately.
 - RESPONSE_TOO_LARGE / UNSUPPORTED_ENCODING: bounds/encoding mismatch; inspect
   privately before raising limits.
-- DATABASE_ERROR: connectivity, role, schema or write problem. Error details are
-  intentionally not logged; consult private database diagnostics.
+- DATABASE_CONFIG_MISSING / DATABASE_CONFIG_INVALID: configure a valid runtime
+  DATABASE_URL; local no-TLS mode is restricted to loopback hosts.
+- DATABASE_TLS_ERROR: check certificate trust, hostname and expiry, the bundled CA,
+  and NODE_EXTRA_CA_CERTS=/var/task/prod-ca-2021.crt.
+- DATABASE_AUTH_ERROR: check the database username/password and pooler credentials.
+- DATABASE_PERMISSION_ERROR: check runtime role grants and RLS policies.
+- DATABASE_DNS_ERROR / DATABASE_CONNECTION_ERROR: check hostname resolution, port,
+  database availability and outbound network connectivity.
+- DATABASE_TIMEOUT: a connection, query or lock timed out, or the server canceled
+  a query. Inspect database load and network access.
+- DATABASE_SCHEMA_ERROR / SOURCE_NOT_FOUND: check the target database, migrations
+  and Pitchfork source seed.
+- DATABASE_ERROR: unrecognized database failure. This fallback never copies raw
+  driver messages, SQL or parameters. Known PostgreSQL/Node codes are classified
+  through bounded Drizzle cause chains; unknown failures need private diagnostics.
+
 - RUN_DEADLINE: remaining run budget exhausted. Committed tracks remain. Inspect
   slow requests/DB behavior before increasing work budget or Lambda timeout.
+
+Every IngestionError has a stable code and a fixed descriptive message in the form
+`CODE: explanation`. Failure logs include both `code` and `message`. Database
+classifications follow [PostgreSQL SQLSTATE codes](https://www.postgresql.org/docs/current/errcodes-appendix.html)
+and [Node system errors](https://nodejs.org/api/errors.html#common-system-errors).
 
 ## Recovery
 

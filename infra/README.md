@@ -3,9 +3,9 @@
 `ingestion.template.json` is plain CloudFormation JSON: an on-demand Node.js 24
 Lambda event function, hourly EventBridge Scheduler schedule, two IAM roles,
 retained logs, two retained encrypted failure queues, and CloudWatch alarms.
-The current RSS-only handler does not implement this template's database completion
-logs or use its database secret. Wire the database ingestion service and validate
-Supabase before deploying this template. Standalone RSS uploads use the root
+The handler now invokes the database ingestion service and reads `DATABASE_URL`.
+Validate its completion logs, alarms, database access and trusted CA configuration
+before deploying this template. Standalone code uploads use the root
 `pnpm upload:lambda` script.
 
 The planned worker ingests one source: Pitchfork's `best_new_track` category.
@@ -33,15 +33,14 @@ and keep those details free of secrets.
 ## Artifact packaging
 
 The root application build emits `dist/ingestion/index.cjs`, exporting `async handler`
-for the current RSS-only path. It does not read `DATABASE_URL`; that will be
-required when the database pipeline is connected. All application modules must be
+for ingestion. The handler requires `DATABASE_URL`. All application modules must be
 bundled. This infrastructure work installed no tools or dependencies.
 
 After the separately approved build, package the existing output locally from the
 repository root (no upload or deployment):
 
 ```sh
-zip -j infra/ingestion.zip dist/ingestion/index.cjs
+zip -j infra/ingestion.zip dist/ingestion/index.cjs certs/prod-ca-2021.crt
 unzip -l infra/ingestion.zip
 ```
 

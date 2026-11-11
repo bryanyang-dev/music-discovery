@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -8,12 +8,14 @@ import { test } from "node:test";
 function fixture(context, failure = "") {
   const root = mkdtempSync(join(tmpdir(), "lambda-upload-test-"));
   context.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const directory of ["scripts", "bin", "dist/ingestion"]) {
+  for (const directory of ["scripts", "bin", "dist/ingestion", "certs"]) {
     mkdirSync(join(root, directory), { recursive: true });
   }
   const script = join(root, "scripts/upload-lambda.sh");
   copyFileSync(new URL("../upload-lambda.sh", import.meta.url), script);
   writeFileSync(join(root, "dist/ingestion/index.cjs"), "exports.handler = async () => ({});\n");
+  const certificatePath = join(root, "certs/prod-ca-2021.crt");
+  copyFileSync(new URL("../../certs/prod-ca-2021.crt", import.meta.url), certificatePath);
   const trace = join(root, "trace.jsonl");
   for (const command of ["aws", "pnpm"]) {
     const path = join(root, "bin", command);
@@ -28,12 +30,13 @@ if ('${command}' === 'aws' && args[1] === 'get-function-configuration') {
 }
 if ('${command}' === 'aws' && args[1] === 'update-function-code') {
   const archive = args[args.indexOf('--zip-file') + 1].slice('fileb://'.length);
-  fs.appendFileSync(process.env.UPLOAD_TEST_TRACE, JSON.stringify({ archiveEntries: execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim() }) + '\\n');
+  fs.appendFileSync(process.env.UPLOAD_TEST_TRACE, JSON.stringify({ archiveEntries: execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim(), certificate: execFileSync('unzip', ['-p', archive, 'prod-ca-2021.crt'], { encoding: 'utf8' }) }) + '\\n');
 }
 `);
     chmodSync(path, 0o755);
   }
   return {
+    certificatePath,
     run(args = ["rss-test", "us-east-2", "development"], configuration) {
       return spawnSync("bash", [script, ...args], {
         cwd: tmpdir(), encoding: "utf8",
@@ -43,12 +46,13 @@ if ('${command}' === 'aws' && args[1] === 'update-function-code') {
       });
     },
     calls() {
+      if (!existsSync(trace)) return [];
       return readFileSync(trace, "utf8").trim().split("\n").map((line) => JSON.parse(line));
     },
   };
 }
 
-test("upload checks, builds, packages only the handler, updates with revision protection, then waits", (context) => {
+test("upload checks, builds, packages the handler and CA certificate, updates with revision protection, then waits", (context) => {
   const state = fixture(context);
   const result = state.run();
   assert.equal(result.status, 0, result.stderr);
@@ -56,7 +60,9 @@ test("upload checks, builds, packages only the handler, updates with revision pr
   assert.deepEqual(calls.filter((call) => call.command === "pnpm").map((call) => call.args), [
     ["typecheck"], ["test"], ["test:bundle"],
   ]);
-  assert.equal(calls.find((call) => call.archiveEntries)?.archiveEntries, "index.cjs");
+  const archive = calls.find((call) => call.archiveEntries);
+  assert.deepEqual(archive.archiveEntries.split("\n").sort(), ["index.cjs", "prod-ca-2021.crt"]);
+  assert.equal(archive.certificate, readFileSync(state.certificatePath, "utf8"));
   const awsCalls = calls.filter((call) => call.command === "aws");
   assert.deepEqual(awsCalls.map((call) => call.args.slice(0, 2)), [
     ["lambda", "get-function-configuration"], ["lambda", "update-function-code"], ["lambda", "wait"],
@@ -108,5 +114,21 @@ test("profile can be omitted to use the normal AWS credential selection", (conte
   assert.equal(result.status, 0, result.stderr);
   for (const call of state.calls().filter((call) => call.command === "aws")) {
     assert.ok(!call.args.includes("--profile"));
+  }
+});
+
+
+test("a missing or empty CA certificate stops before building or contacting AWS", (context) => {
+  for (const missing of [true, false]) {
+    const state = fixture(context);
+    if (missing) {
+      rmSync(state.certificatePath);
+    } else {
+      writeFileSync(state.certificatePath, "");
+    }
+    const result = state.run();
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Missing or unreadable database CA certificate/);
+    assert.deepEqual(state.calls(), []);
   }
 });

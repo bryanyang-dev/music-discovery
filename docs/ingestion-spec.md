@@ -1,10 +1,10 @@
 # Pitchfork Best New Tracks — implementation specification
 
-Status: the RSS-only Lambda handler is implemented; the initial Supabase schema
-and source seed have been migrated. Connecting the handler is next.
-`run.ts` and `packages/db` implement the database pipeline below, but the current
-handler does not invoke them. Hosted schema verification passed; full database
-ingestion integration remains unverified.
+Status: the Lambda handler is wired to database ingestion; the initial Supabase schema
+and source seed have been migrated. The handler invokes `run.ts` and `packages/db`.
+Hosted schema verification passed; live track ingestion remains unverified.
+Track upserts are temporarily commented out: feeds and tracks are logged, run
+tracking remains active, and feed validators are bypassed and cleared.
 This file records the planned ingestion behavior, including persistent run records;
 it does not require AWS Lambda durable executions.
 
@@ -136,9 +136,8 @@ An ambiguous database acknowledgement can also make result counts approximate.
 - Request timeout: 12 seconds per attempt, including response body and redirects.
 - Redirects: at most three; validate every target before requesting.
 - XML entity/DOCTYPE declarations and non-UTF-8 responses are rejected.
-- Current RSS-only handler: at most 30 seconds across requests/retries, capped at
-  Lambda remaining time minus 250 milliseconds for logging/return. It does not use
-  the database work budget. The handler owns up to three
+- RSS fetch phase: at most 30 seconds across requests/retries, capped at
+  the shared database work deadline. The handler owns up to three
   retries after the initial attempt, with 1/2/4-second exponential delays,
   respecting longer Retry-After values and the shared deadline. Nested HTTP
   retries are disabled for this path. Only transient HTTP/network/timeout errors
@@ -148,7 +147,8 @@ An ambiguous database acknowledgement can also make result counts approximate.
 - Database ingestion service: a 240-second default work budget.
   The future infrastructure template allows a 300-second invocation,
   leaving cleanup time before timeout. Runtime Lambda deadline
-  propagation must be wired when the database handler is enabled.
+  propagation is wired through HTTP and database operations. The handler reserves
+  24.25 seconds for operation termination, finalization, connection close and return.
 - Database connection: one per invocation, verified TLS, no prepared statements,
   5-second connection timeout, transaction-local 8-second statement/2-second lock
   limits, and a 15-second client-side operation bound. Aborting work or exceeding
@@ -176,7 +176,7 @@ explicit operational steps, not automatic actions.
 
 Unit/fixture tests run offline. Real Postgres tests cover upserts, independent runs,
 source/run validation and atomic run/cache finalization against a pre-migrated
-disposable database. Local build tests load the actual RSS-only bundled handler. Infrastructure
+disposable database. Local build tests load the actual bundled handler. Infrastructure
 tests check structural/security invariants, not cloud-side schema/deployment success.
 
 ## Policy ownership and rationale

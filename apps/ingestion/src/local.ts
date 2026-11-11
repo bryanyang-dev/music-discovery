@@ -22,15 +22,20 @@ async function previewTracks(useFixture: boolean): Promise<void> {
     feed = response.feed;
   }
 
+  console.log(JSON.stringify({ event: "feed_parsed", level: "INFO", feed }));
   const tracks: TrackInput[] = [];
   for (const entry of feed.entries) {
     if (useFixture) {
       const fixtureUrl = new URL("../../../packages/rss/test/fixtures/review.html", import.meta.url);
       const html = await readFile(fixtureUrl, "utf8");
-      tracks.push(extractTrack(entry, html));
+      const track = extractTrack(entry, html);
+      console.log(JSON.stringify({ event: "track_extracted", level: "INFO", track, writeSkipped: true }));
+      tracks.push(track);
     } else {
       const page = await requestPitchfork(entry.sourceUrl, "review");
-      tracks.push(extractTrack(entry, page.body, page.url));
+      const track = extractTrack(entry, page.body, page.url);
+      console.log(JSON.stringify({ event: "track_extracted", level: "INFO", track, writeSkipped: true }));
+      tracks.push(track);
     }
   }
 

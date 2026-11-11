@@ -5,10 +5,11 @@ import {
   MAX_RUN_ERROR_COUNT,
   PITCHFORK_SOURCE_KEY,
   safeLogUrl,
-  type CacheValidators,
+  toIngestionError,
   type IngestionStore,
   type RunResult,
   type SourceRecord,
+  type TrackInput,
 } from "@music-discovery/shared";
 import {
   extractTrack,
@@ -24,12 +25,9 @@ export type RunOutcome = RunResult | { status: "skipped"; reason: "disabled" };
 export interface IngestionOptions {
   signal?: AbortSignal;
   http?: HttpOptions;
-}
-
-function assertWorkCanContinue(signal: AbortSignal): void {
-  if (signal.aborted) {
-    throw new IngestionError("RUN_DEADLINE");
-  }
+  fetch?: typeof fetchFeed;
+  onFeedParsed?: (feed: ParsedFeed) => void;
+  onTrackExtracted?: (track: TrackInput) => void;
 }
 
 async function processFeedEntries(
@@ -38,7 +36,7 @@ async function processFeedEntries(
   result: RunResult,
   feed: ParsedFeed,
   http: HttpOptions,
-  signal: AbortSignal,
+  onTrackExtracted: (track: TrackInput) => void,
 ): Promise<void> {
   result.found = feed.found;
   result.rejected = feed.errors.length;
@@ -46,7 +44,6 @@ async function processFeedEntries(
   await store.recordDiscovery(source, result.runId, feed.errors);
 
   for (const entry of feed.entries) {
-    assertWorkCanContinue(signal);
     let track;
 
     try {
@@ -67,9 +64,10 @@ async function processFeedEntries(
       continue;
     }
 
-    assertWorkCanContinue(signal);
-    const outcome = await store.upsertTrack(source, result.runId, track);
-    result[outcome]++;
+    onTrackExtracted(track);
+    // Temporarily disabled while inspecting extracted track metadata in logs.
+    // const outcome = await store.upsertTrack(source, result.runId, track);
+    // result[outcome]++;
   }
 
   if (result.rejected > 0) {
@@ -80,8 +78,10 @@ async function processFeedEntries(
 async function executeRun(
   store: IngestionStore,
   source: SourceRecord,
-  signal: AbortSignal,
   http: HttpOptions,
+  fetch: typeof fetchFeed,
+  onFeedParsed: (feed: ParsedFeed) => void,
+  onTrackExtracted: (track: TrackInput) => void,
 ): Promise<RunResult> {
   const runId = await store.beginRun(source);
   const result: RunResult = {
@@ -91,29 +91,38 @@ async function executeRun(
     notModified: false,
     errors: [],
   };
-  let validators: CacheValidators | null = null;
+  let primaryFailure: IngestionError | undefined;
 
   try {
-    assertWorkCanContinue(signal);
-    const response = await fetchFeed(source.feedUrl, {
-      etag: source.etag,
-      lastModified: source.lastModified,
+    const response = await fetch(source.feedUrl, {
+      // Fetch unconditionally while writes are disabled so every track is logged.
+      etag: null,
+      lastModified: null,
     }, http);
 
-    validators = response.validators;
     if (response.notModified) {
       result.notModified = true;
     } else {
-      await processFeedEntries(store, source, result, response.feed, http, signal);
+      onFeedParsed(response.feed);
+      await processFeedEntries(store, source, result, response.feed, http, onTrackExtracted);
     }
   } catch (error) {
     result.status = "failed";
-    result.errors.push({ code: errorCode(error), sourceUrl: null });
+    primaryFailure = toIngestionError(error);
+    result.errors.unshift({ code: primaryFailure.code, sourceUrl: null });
   }
 
   result.errors = result.errors.slice(0, MAX_RUN_ERROR_COUNT);
-  const successfulValidators = result.status === "succeeded" ? validators : null;
-  return store.finishRun(source, result, successfulValidators);
+  try {
+    // Do not cache a feed whose tracks have only been logged, not persisted.
+    return await store.finishRun(source, result, null);
+  } catch (error) {
+    if (primaryFailure) {
+      primaryFailure.cleanupErrors.push(errorCode(error));
+      throw primaryFailure;
+    }
+    throw error;
+  }
 }
 
 export async function ingestPitchfork(
@@ -121,11 +130,18 @@ export async function ingestPitchfork(
   options: IngestionOptions = {},
 ): Promise<RunOutcome> {
   const signal = options.signal ?? AbortSignal.timeout(INGESTION_TIMING.maxWorkDurationMs);
+  // HTTP and database operations own cancellation; finalization uses its cleanup budget.
   const http = { ...options.http, signal };
   const source = await store.getSource(PITCHFORK_SOURCE_KEY);
   if (!source) {
     return { status: "skipped", reason: "disabled" };
   }
 
-  return executeRun(store, source, signal, http);
+  const onFeedParsed = options.onFeedParsed ?? ((feed: ParsedFeed) => {
+    console.log(JSON.stringify({ event: "feed_parsed", level: "INFO", feed }));
+  });
+  const onTrackExtracted = options.onTrackExtracted ?? ((track: TrackInput) => {
+    console.log(JSON.stringify({ event: "track_extracted", level: "INFO", track, writeSkipped: true }));
+  });
+  return executeRun(store, source, http, options.fetch ?? fetchFeed, onFeedParsed, onTrackExtracted);
 }

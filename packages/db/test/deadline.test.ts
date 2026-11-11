@@ -10,7 +10,7 @@ test("database timeout tears down the client before rejecting and ignores late r
     () => new Promise<string>((resolve) => { complete = resolve; }),
     async () => { terminated = true; }, { timeoutMs: 5 },
   );
-  await assert.rejects(work, (error) => error instanceof IngestionError && error.code === "DATABASE_ERROR");
+  await assert.rejects(work, (error) => error instanceof IngestionError && error.code === "DATABASE_TIMEOUT");
   assert.equal(terminated, true);
   complete?.("late");
 });
@@ -50,7 +50,7 @@ test("a stalled termination cannot make the database deadline wait forever", asy
     () => new Promise<void>(() => {}),
     { timeoutMs: 5 },
   );
-  const rejected = assert.rejects(work, /DATABASE_ERROR/);
+  const rejected = assert.rejects(work, /DATABASE_TIMEOUT/);
 
   context.mock.timers.tick(5);
   context.mock.timers.tick(3_000);

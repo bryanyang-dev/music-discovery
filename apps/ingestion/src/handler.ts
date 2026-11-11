@@ -1,28 +1,28 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { Context } from "aws-lambda";
-import { fetchFeed } from "@music-discovery/rss";
-import { IngestionError, PITCHFORK_FEED_URL } from "@music-discovery/shared";
+import { fetchFeed, type HttpOptions } from "@music-discovery/rss";
+import { connectDatabase } from "@music-discovery/db";
+import { IngestionError, toIngestionError, type IngestionStore } from "@music-discovery/shared";
+import { ingestPitchfork } from "./run.ts";
+import { INGESTION_TIMING } from "./timing.ts";
 
-// Bound the entire RSS fetch, including retries. Leave a small margin to log/return
-// before Lambda terminates the invocation; no database cleanup is needed here.
+// RSS retries share a 30-second cap inside the overall ingestion work budget.
 const RSS_REQUEST_TIMEOUT_MS = 30_000;
-const RESPONSE_RESERVE_MS = 250;
 const MAX_RETRY_COUNT = 3;
 const INITIAL_RETRY_DELAY_MS = 1_000;
 const RETRY_BACKOFF_MULTIPLIER = 2;
 
-function createRssSignal(context?: Context): AbortSignal {
-  let requestTimeoutMs = RSS_REQUEST_TIMEOUT_MS;
-  if (context) {
-    requestTimeoutMs = Math.min(
-      requestTimeoutMs,
-      context.getRemainingTimeInMillis() - RESPONSE_RESERVE_MS,
-    );
-  }
-  if (requestTimeoutMs <= 0) {
+type DatabaseConnection = { store: IngestionStore; close(): Promise<void> };
+
+function createWorkSignal(context?: Context): AbortSignal {
+  const workDurationMs = Math.min(
+    INGESTION_TIMING.maxWorkDurationMs,
+    (context?.getRemainingTimeInMillis() ?? Infinity) - INGESTION_TIMING.cleanupReserveMs,
+  );
+  if (workDurationMs <= 0) {
     throw new IngestionError("RUN_DEADLINE");
   }
-  return AbortSignal.timeout(requestTimeoutMs);
+  return AbortSignal.timeout(workDurationMs);
 }
 
 type RssLogger = Pick<Console, "log" | "warn" | "error">;
@@ -36,6 +36,9 @@ type LogLevel = typeof LOG_LEVEL[keyof typeof LOG_LEVEL];
 
 interface RssHandlerDependencies {
   fetch?: typeof fetchFeed;
+  connect?: (url: string, options: { signal: AbortSignal }) => DatabaseConnection;
+  databaseUrl?: string;
+  http?: HttpOptions;
   logger?: RssLogger;
   sleep?: (delayMs: number, signal: AbortSignal) => Promise<void>;
 }
@@ -57,18 +60,18 @@ function logEvent(
   }
 }
 
-export function createHandler(dependencies: RssHandlerDependencies = {}) {
-  return async (_event?: unknown, context?: Context) => {
+function createFeedFetcher(dependencies: RssHandlerDependencies, requestId: string | null): typeof fetchFeed {
+  return async (url, validators, options) => {
     const {
       fetch = fetchFeed,
       logger = console,
       sleep = (delayMs, signal) => delay(delayMs, undefined, { signal }),
     } = dependencies;
-    const requestId = context?.awsRequestId ?? null;
     let attempt = 0;
 
     try {
-      const signal = createRssSignal(context);
+      const timeout = AbortSignal.timeout(RSS_REQUEST_TIMEOUT_MS);
+      const signal = options?.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
       while (true) {
         if (signal.aborted) {
           throw new IngestionError("RUN_DEADLINE");
@@ -79,9 +82,9 @@ export function createHandler(dependencies: RssHandlerDependencies = {}) {
         try {
           // The handler owns retries; disable the HTTP layer's retry loop.
           const response = await fetch(
-            PITCHFORK_FEED_URL,
-            { etag: null, lastModified: null },
-            { signal, attempts: 1 },
+            url,
+            validators,
+            { ...options, signal, attempts: 1 },
           );
           if (signal.aborted) {
             throw new IngestionError("RUN_DEADLINE");
@@ -101,6 +104,7 @@ export function createHandler(dependencies: RssHandlerDependencies = {}) {
           logEvent(logger, requestId, LOG_LEVEL.WARN, "rss_fetch_attempt_failed", {
             attempt,
             code: failure.code,
+            message: failure.message,
           });
 
           // HTTP marks transient status/network failures with retryAfterMs.
@@ -114,6 +118,7 @@ export function createHandler(dependencies: RssHandlerDependencies = {}) {
               attempt,
               maxAttempts: MAX_RETRY_COUNT + 1,
               code: failure.code,
+              message: failure.message,
             });
             throw failure;
           }
@@ -140,10 +145,64 @@ export function createHandler(dependencies: RssHandlerDependencies = {}) {
         ? error
         : new IngestionError("HTTP_ERROR");
       if (failure.code === "RUN_DEADLINE") {
-        logEvent(logger, requestId, LOG_LEVEL.ERROR, "rss_fetch_aborted", { attempt, code: failure.code });
+        logEvent(logger, requestId, LOG_LEVEL.ERROR, "rss_fetch_aborted", { attempt, code: failure.code, message: failure.message });
       }
-      logEvent(logger, requestId, LOG_LEVEL.ERROR, "rss_fetch_failed", { attempt, code: failure.code });
+      logEvent(logger, requestId, LOG_LEVEL.ERROR, "rss_fetch_failed", { attempt, code: failure.code, message: failure.message });
       throw failure;
+    }
+  };
+}
+
+export function createHandler(dependencies: RssHandlerDependencies = {}) {
+  return async (_event?: unknown, context?: Context) => {
+    const logger = dependencies.logger ?? console;
+    const requestId = context?.awsRequestId ?? null;
+    let database: DatabaseConnection | undefined;
+    let failure: IngestionError | undefined;
+    try {
+      const signal = createWorkSignal(context);
+      const databaseUrl = dependencies.databaseUrl ?? process.env.DATABASE_URL;
+      if (!databaseUrl) {
+        throw new IngestionError("DATABASE_CONFIG_MISSING");
+      }
+      database = (dependencies.connect ?? connectDatabase)(databaseUrl, { signal });
+      const result = await ingestPitchfork(database.store, {
+        http: dependencies.http ?? {},
+        signal,
+        fetch: createFeedFetcher(dependencies, requestId),
+        onFeedParsed: (feed) => {
+          logEvent(logger, requestId, LOG_LEVEL.INFO, "feed_parsed", { feed });
+        },
+        onTrackExtracted: (track) => {
+          logEvent(logger, requestId, LOG_LEVEL.INFO, "track_extracted", { track, writeSkipped: true });
+        },
+      });
+      logEvent(logger, requestId, result.status === "succeeded" || result.status === "skipped"
+        ? LOG_LEVEL.INFO : LOG_LEVEL.ERROR, "ingestion_completed", { result });
+      if (result.status === "failed") {
+        throw new IngestionError(result.errors[0]?.code ?? "DATABASE_ERROR");
+      }
+      return result;
+    } catch (error) {
+      failure = toIngestionError(error);
+      logEvent(logger, requestId, LOG_LEVEL.ERROR, "ingestion_failed", { code: failure.code, message: failure.message });
+      throw failure;
+    } finally {
+      if (database) {
+        try {
+          await database.close();
+        } catch (error) {
+          const cleanupFailure = toIngestionError(error);
+          logEvent(logger, requestId, LOG_LEVEL.ERROR, "database_close_failed", {
+            code: cleanupFailure.code,
+            message: cleanupFailure.message,
+          });
+          if (!failure) {
+            throw cleanupFailure;
+          }
+          failure.cleanupErrors.push(cleanupFailure.code);
+        }
+      }
     }
   };
 }

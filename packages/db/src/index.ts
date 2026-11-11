@@ -7,6 +7,7 @@ import { mergeTrack, metadataHash } from "./merge.ts";
 import { boundDatabaseOperation } from "./deadline.ts";
 import { DATABASE_POLICY } from "./policy.ts";
 import { databaseSsl } from "./connection.ts";
+import { databaseError } from "./errors.ts";
 
 interface DatabaseOptions {
   localTest?: boolean;
@@ -45,7 +46,9 @@ export function connectDatabase(connectionString: string, options: DatabaseOptio
       }),
       () => client.end({ timeout: DATABASE_POLICY.forceCloseTimeoutSeconds }),
       deadlineOptions,
-    );
+    ).catch((error: unknown) => {
+      throw databaseError(error);
+    });
   }
 
   function activeRun(source: SourceRecord, runId: string) {
@@ -165,7 +168,13 @@ export function connectDatabase(connectionString: string, options: DatabaseOptio
     db,
     store,
     async close() {
-      await client.end({ timeout: DATABASE_POLICY.closeTimeoutSeconds });
+      try {
+        await client.end({ timeout: DATABASE_POLICY.closeTimeoutSeconds });
+      } catch (error) {
+        throw databaseError(error);
+      }
     },
   };
 }
+
+export { DATABASE_POLICY } from "./policy.ts";
