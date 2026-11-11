@@ -97,6 +97,9 @@ The goal is to become more effective at working in this repository with every co
 - Keep publisher constants, URL policies, feed parsing and review extraction under
   `packages/rss/src/publishers/<publisher>/`. Keep `shared` publisher-neutral and
   metadata hashing with the database merge logic; name public publisher APIs explicitly.
+- Evaluate new publisher feeds as posts before assuming one track per item. Treat
+  intentional non-track skips separately from extraction failures; writers, tags,
+  tracklists and incidental song mentions do not establish credited recommendations.
 - Preserve primary failures when cleanup fails. Bound cleanup, make cancellation
   ownership explicit, and never expose secrets in logs or errors.
 - Keep changes focused. Add regression tests for affected boundaries and failure paths;

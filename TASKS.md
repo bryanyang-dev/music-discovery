@@ -908,3 +908,22 @@ This section is updated as each task progresses, including verification evidence
   tests, Lambda rebuild and four bundle smoke tests passed. Relative documentation
   links and Git whitespace passed. PostgreSQL integration was not run; no dependency
   installation, remote writes, migrations or uploads were performed.
+
+## 2026-11-11 23:00 UTC — Evaluate Stereogum RSS before implementation
+
+- Read the live main feed and four linked articles, plus a weekly song-list page.
+  The 48,828-byte feed snapshot had 40 posts: 33 tagged New Music, with other
+  items covering news, a column and an album review. Category tags overlap.
+- All sampled descriptions were attribution links; none of the 40 items included
+  content:encoded. Media RSS images were present. Four linked pages exposed
+  Article JSON-LD, not the Pitchfork Review/MusicRecording structure.
+- Documented single-track, EP/lead-single, collaboration, album and roundup cases
+  in docs/sources/stereogum.md, with primary-source links. Recommended an initial
+  single-track scope and explicit non-track skip outcomes, preserving current DB
+  identity until multi-track posts receive a deliberate identity/migration design.
+- Added a README evaluation link and repository guidance for mixed post feeds.
+  No adapter or database source was added; no dependency installation, migration
+  or deployment occurred. Temporary research XML/HTML stayed outside the repo.
+- Verification: XML structure, feed classifications, description/content fields,
+  linked-page JSON-LD and canonical redirects inspected. Relative Markdown links
+  and Git whitespace passed; application tests were not rerun for documentation only.

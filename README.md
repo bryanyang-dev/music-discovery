@@ -208,6 +208,7 @@ Hosted track-ingestion integration remains unverified.
 
 ## Documentation
 
+- [Stereogum evaluation](docs/sources/stereogum.md): mixed feed structure and proposed track extraction scope.
 - [Operations](docs/operations.md): configuration, logs, outcomes and recovery.
 - [Implementation specification](docs/ingestion-spec.md): parsing and lifecycle contracts.
 - [Timing and policies](docs/timing-and-policies.md): limit ownership, deadline relationships and tuning.
