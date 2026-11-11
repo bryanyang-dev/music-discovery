@@ -955,3 +955,11 @@ This section is updated as each task progresses, including verification evidence
 - Validation: relative Markdown links, balanced fences and Git whitespace passed.
   No GitHub checks are configured/reported for this branch; application tests were
   not rerun for documentation-only changes.
+
+## 2026-11-11 23:58 UTC — Remove personal skill references after review
+
+- Addressed PR #2 inline comment 4544567324 by removing the named personal skill
+  from AGENTS.md and README. Repository workflow expectations remain self-contained;
+  the earlier skill-reference entry describes a superseded PR revision.
+- Validation: relative Markdown links, section target, balanced code fences and Git
+  whitespace passed. Application tests were not rerun for documentation-only edits.

@@ -10,8 +10,6 @@ These rules supplement inherited instructions, including the dependency-installa
   branch. Leave merging to the human unless explicitly instructed otherwise.
 - Clean up task resources only after verifying the PR is merged and that no
   uncommitted work or later commits would be lost.
-- Follow `$worktree-pr-workflow` when available for setup, human inspection,
-  PR feedback and cleanup procedures. The rules above apply without the skill.
 
 ## Commit messages
 
