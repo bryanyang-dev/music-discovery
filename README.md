@@ -1,163 +1,134 @@
-# Music discovery — Pitchfork ingestion
+# Music discovery
 
-Hourly discovery of Pitchfork **Best New Tracks**, ready to run as an AWS Lambda
-event function. Uses TypeScript, pnpm, Drizzle, and Supabase-compatible Postgres.
+Fetch and parse Pitchfork Best New Tracks with a TypeScript AWS Lambda handler.
+The current handler logs and returns RSS data without database access. PostgreSQL
+storage and review-page enrichment are implemented separately for the next
+Supabase integration step; no remote database migration has been performed.
 
-**Nothing is deployed. No remote database has been migrated.**
-
-- [Implementation task board and work log](TASKS.md)
-- [Pipeline specification and decisions](docs/ingestion-spec.md)
-- [Operational runbook](docs/operations.md)
-- [Undeployed AWS infrastructure](infra/README.md)
+The latest local handler includes retries, deadline handling, and severity-based
+logging. It has not yet been uploaded to the current target, `musicRssFetcher`.
 
 ## Structure
 
 ```text
-apps/ingestion/src/handler.ts  Lambda entry point
-apps/ingestion/src/run.ts      One source's ingestion lifecycle
-apps/ingestion/src/local.ts    Thin local run/preview wrapper (not a CLI product)
-packages/rss                  Safe HTTP, RSS discovery, review metadata extraction
-packages/db                   Schema, migrations, source leases, track upserts
-packages/shared               Contracts, source constants, URL/error helpers
-infra                         Reviewable disabled-by-default AWS template and tests
-apps/web, apps/api            Future placeholders only
+apps/ingestion/src/handler.ts  RSS-only Lambda entry point
+apps/ingestion/src/local.ts    Local RSS and enriched-track previews
+apps/ingestion/src/run.ts      Database ingestion service, not wired to the handler
+apps/ingestion/src/timing.ts   Database ingestion work/lease limits
+packages/rss                  HTTP, RSS parsing, review metadata extraction
+packages/db                   PostgreSQL schema, migrations, and persistence
+packages/shared               Shared contracts, source constants, and helpers
+scripts/upload-lambda.sh      Build, test, package, and update a test Lambda
+infra                         Future hourly database ingestion infrastructure
 ```
 
-The old generic feed-management CLI has been removed. There is no feed-registration
-command: the additive migration seeds the single agreed source automatically.
+## Local development
 
-## Prerequisites
-
-Node 24 LTS and pnpm 12.8.1. Dependencies are already installed in the working copy.
-No dependencies were installed or upgraded during the Pitchfork implementation.
-
-For a fresh checkout, review and explicitly approve the exact installation command
-under your dependency policy before running:
+Use Node.js 24 and pnpm 12.8.1. Dependency installation requires explicit approval.
+For an approved fresh checkout, the installation command is:
 
 ```sh
 pnpm install --frozen-lockfile --ignore-scripts
 ```
 
-Workspace packages export TypeScript for local execution with tsx. Production
-bundles all runtime dependencies into a CommonJS Lambda artifact.
+Existing commands:
 
-## Try it without credentials
+| Command | Purpose |
+| --- | --- |
+| `pnpm ingest` | Fetch, log, and return RSS; no database access |
+| `pnpm ingest:preview` | Fetch RSS and linked reviews; print enriched tracks |
+| `pnpm ingest:fixture` | Preview enriched tracks using offline fixtures |
+| `pnpm typecheck` | Check TypeScript, including unused locals and parameters |
+| `pnpm test` | Run application, infrastructure, and upload-script tests offline |
+| `pnpm test:bundle` | Build and smoke-test the actual Lambda bundle |
+| `pnpm test:db` | Run real PostgreSQL tests when TEST_DATABASE_URL is provided |
+| `pnpm db:generate` | Generate SQL migrations locally from the schema |
+| `pnpm db:migrate` | Apply migrations to the configured database; requires authorization |
 
-```sh
-pnpm ingest:fixture
-pnpm typecheck
-pnpm test
-pnpm test:bundle
-```
+Tests use synthetic fixtures and mocked network/AWS calls. The separate database
+integration suite skips without TEST_DATABASE_URL and does not load `.env`.
+Local `pnpm ingest` loads `.env` if present; previews do not. Credentials and
+build artifacts are ignored by Git.
 
-The fixture preview is completely offline. Tests use synthetic fixtures and do not
-contact Pitchfork or a database. The bundle test builds and loads the actual Lambda
-artifact, including the RSS parser and Postgres driver.
+## RSS behavior and logs
 
-For a read-only live preview (RSS plus linked reviews; no database writes):
+The handler fetches the fixed Pitchfork feed URL and returns its parsed response.
+Malformed individual entries appear in `response.feed.errors`; a feed/network
+failure throws a sanitized error and fails the invocation.
 
-```sh
-pnpm ingest:preview
-```
+Transient failures get up to three retries after the initial attempt: four
+attempts maximum, with exponential waits of 1, 2, and 4 seconds. Longer Retry-After
+values are honored. Nested HTTP retries are disabled for this handler.
 
-Live preview intentionally does not load .env. It is a manual diagnostic, not the
-scheduled worker. As of implementation verification, all 30 entries returned by the
-public feed could be normalized with credited artists.
+Requests and waits share a 30-second maximum budget. Under Lambda, that budget
+is capped at remaining invocation time minus 250 milliseconds for logging/return.
+A short invocation can run out of time before all retries are used.
 
-## Set up a development database
+Every JSON log record includes the AWS request ID, attempt number, and level:
 
-1. Select a disposable/development Supabase project, not production.
-2. Copy the example without overwriting an existing environment file:
+| Level / console method | Events |
+| --- | --- |
+| INFO / `console.log` | `rss_fetch_started`, `rss_fetch_succeeded` |
+| WARN / `console.warn` | `rss_fetch_attempt_failed`, `rss_fetch_retry_scheduled` |
+| ERROR / `console.error` | `rss_fetch_aborted`, `rss_fetch_max_attempts_reached`, `rss_fetch_failed` |
 
-   ```sh
-   cp -n .env.example .env
-   ```
+Success logs include the parsed response. Retry logs include the delay in
+milliseconds. Error logs contain safe codes, not raw exception messages.
 
-3. Privately set DATABASE_URL to the **transaction pooler** URL from Supabase's
-   Connect panel (usually port 6543). URL-encode password special characters.
-4. Set DATABASE_MIGRATION_URL to a **direct or session pooler** connection (usually
-   port 5432). A direct connection may need IPv6; session pooling supports IPv4.
-5. Verify the project/database and review both migration SQL files before:
-
-   ```sh
-   pnpm db:migrate
-   pnpm ingest
-   ```
-
-The migration creates the track/source/run tables and idempotently seeds
-pitchfork_best_new_tracks. Each run imports the current feed, not an archive.
-Legacy feeds/articles tables remain represented and untouched so the original
-scaffold migration is not destructive. They are unused by the new worker, and
-legacy article data is not silently converted into tracks.
-
-TLS certificate verification is mandatory in normal runtime. Use NODE_EXTRA_CA_CERTS
-if your database requires a trusted custom CA; never disable verification to make
-a production connection work. Prepared statements are disabled and each invocation
-uses at most one client connection for transaction-pooler compatibility.
-
-All active tables enable RLS without public policies. Development can use a trusted
-database-owner connection. Before production, configure a dedicated runtime role
-with only the needed table privileges and appropriate server-role RLS policies.
-Keep migration privileges separate. Do not use a Supabase public API key as a
-Postgres password or expose database-owner credentials to a frontend.
-
-## Schema changes
+## Upload to the test Lambda
 
 ```sh
-pnpm db:generate
+pnpm upload:lambda
 ```
 
-This only generates local SQL/snapshot files. Review the SQL and then deliberately
-run db:migrate against the intended development database. The migration runner never
-runs inside Lambda or automatically during tests/builds.
-
-## Real Postgres integration tests
-
-The integration suite is separate and skips unless TEST_DATABASE_URL is explicitly
-set in the process environment. It does **not** load your .env file.
-
-1. Migrate a disposable development database using the normal migration process.
-2. Set TEST_DATABASE_URL privately to that database.
-3. Run:
+Defaults: `arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher`, region
+`us-east-2`, local AWS CLI profile `music-discovery`. To override them:
 
 ```sh
-pnpm test:db
+pnpm upload:lambda musicRssFetcher us-east-2 music-discovery
 ```
 
-Tests create randomly named source records, verify real upserts/run transactions,
-exercise competing clients and expired fencing tokens, and delete only their own
-tracks/runs/sources afterward. Do not use production.
+The function must already exist with Node.js 24, ZIP packaging, handler
+`index.handler`, durable execution disabled, and an execution role with CloudWatch
+logging permissions. A 30-second timeout is recommended; the default three seconds
+may be too short for a live RSS request. No VPC or database settings are needed.
 
-For an existing loopback-only test Postgres without TLS, explicitly set
-TEST_DATABASE_ALLOW_LOCAL_NO_TLS=1 in addition to TEST_DATABASE_URL. The bypass is
-rejected for remote hosts and is never used by the production handler.
+The script uses already-installed AWS CLI, pnpm, and zip. It checks the target,
+then typechecks, tests, builds, smoke-tests, packages `index.cjs` at the ZIP root,
+updates `$LATEST`, and waits for the update to complete. The caller needs
+`lambda:GetFunctionConfiguration`, `lambda:GetFunction`, and
+`lambda:UpdateFunctionCode` on the target. A named profile is passed to every AWS
+command; explicit target/region arguments without a profile use normal AWS CLI
+credential selection.
 
-Integration tests have not run in this session: no disposable test database was
-provided, no local Postgres binaries exist, and the Docker daemon is unavailable.
-No database service was started and no container image was pulled.
+The script protects against concurrent deployments with a revision ID and removes
+its temporary archive on exit. Failed checks stop the upload; a failure after AWS
+accepts an update does not roll back code. It does not change configuration, publish
+versions, move aliases, or invoke the function. Test manually with `{}` afterward.
 
-## Lambda deployment boundary
+For a manual console upload, `pnpm build:lambda` writes
+`dist/ingestion/index.cjs`, exporting `handler`. The bundle contains the RSS
+runtime dependencies; no `node_modules` upload is needed.
 
-```sh
-pnpm build:lambda
-```
+## Next: Supabase
 
-Output: dist/ingestion/index.cjs; handler: index.handler; runtime: nodejs24.x.
+Keep runtime DATABASE_URL and migration DATABASE_MIGRATION_URL private, using
+`.env.example` as the template. The database package uses standard PostgreSQL and
+Drizzle. Runtime connections use transaction pooling with prepared statements
+disabled; migrations use a direct or session-pooled connection. TLS verification
+is required. Schema generation is local; applying migrations is always explicit.
 
-The undeployed CloudFormation template schedules hourly UTC invocations, reserves
-one execution, configures separate delivery/execution failure queues, and includes
-alarms. The schedule is **disabled by default**. DATABASE_URL is supplied through an
-existing Secrets Manager secret at deployment, not embedded in source or payloads.
+The current handler does not call `ingestPitchfork` or write to PostgreSQL. Setting
+environment variables or running `pnpm ingest` does not enable database ingestion.
+Supabase provisioning, migration review, role/RLS setup, integration testing, and
+wiring the service into Lambda are the next stage.
 
-Read infra/README.md before any deployment. Confirm the selected Region
-(us-east-2), plan/service availability, costs, database role/connection, artifact,
-alarm destination, and secret rotation process. No upload, provisioning, cloud
-invocation, schedule enablement, or commit has been performed.
+The existing legacy feeds/articles schema and migration are retained to preserve
+the database history. Do not delete or regenerate migration history as cleanup.
 
-## References
-
-- [Pitchfork's RSS directory](https://pitchfork.com/info/rss/)
-- [Best New Tracks RSS](https://pitchfork.com/feed/reviews/best/tracks/rss)
+- [Database ingestion specification](docs/ingestion-spec.md)
+- [Current RSS and future database operations](docs/operations.md)
+- [Future infrastructure and deployment prerequisites](infra/README.md)
+- [Implementation history and checks](TASKS.md)
 - [Supabase connection modes](https://supabase.com/docs/guides/database/connecting-to-postgres)
 - [Supabase with Drizzle](https://supabase.com/docs/guides/database/drizzle)
-- [Drizzle transactions](https://orm.drizzle.team/docs/transactions)

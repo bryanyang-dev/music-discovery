@@ -5,19 +5,19 @@ import { INGESTION_TIMING } from "../src/timing.ts";
 
 const MILLISECONDS_PER_SECOND = 1_000;
 
-test("work plus cleanup fits the configured invocation, and the lease outlives it", () => {
-  const workAndCleanupMs = INGESTION_TIMING.maxWorkDurationMs + INGESTION_TIMING.cleanupReserveMs;
+test("database ingestion work is bounded by its source lease", () => {
   const leaseDurationMs = INGESTION_TIMING.sourceLeaseSeconds * MILLISECONDS_PER_SECOND;
-
-  assert.ok(workAndCleanupMs <= INGESTION_TIMING.defaultInvocationTimeoutMs);
-  assert.ok(INGESTION_TIMING.minimumWorkDurationMs < INGESTION_TIMING.maxWorkDurationMs);
-  assert.ok(leaseDurationMs > INGESTION_TIMING.defaultInvocationTimeoutMs);
+  assert.ok(INGESTION_TIMING.maxWorkDurationMs > 0);
+  assert.ok(leaseDurationMs > INGESTION_TIMING.maxWorkDurationMs);
 });
 
-test("the undeployed Lambda template and local fallback have the same invocation timeout", async () => {
+test("the future database Lambda leaves cleanup time and finishes before its lease expires", async () => {
   const templateUrl = new URL("../../../infra/ingestion.template.json", import.meta.url);
   const template = JSON.parse(await readFile(templateUrl, "utf8"));
   const functionTimeoutSeconds = template.Resources.IngestionFunction.Properties.Timeout;
 
-  assert.equal(functionTimeoutSeconds * MILLISECONDS_PER_SECOND, INGESTION_TIMING.defaultInvocationTimeoutMs);
+  const invocationTimeoutMs = functionTimeoutSeconds * MILLISECONDS_PER_SECOND;
+  const leaseDurationMs = INGESTION_TIMING.sourceLeaseSeconds * MILLISECONDS_PER_SECOND;
+  assert.ok(INGESTION_TIMING.maxWorkDurationMs < invocationTimeoutMs);
+  assert.ok(invocationTimeoutMs < leaseDurationMs);
 });

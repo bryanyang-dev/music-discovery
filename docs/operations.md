@@ -1,6 +1,28 @@
 # Ingestion operations
 
-No production resources are deployed. This runbook describes the intended worker.
+The current `musicRssFetcher` target is a regular RSS-only Lambda in `us-east-2`.
+The local handler includes retries and structured logs; use `pnpm upload:lambda`
+to deploy it. Supabase is not yet connected and the hourly infrastructure template
+has not been deployed.
+
+## Current RSS checks
+
+- Test with `{}` and inspect the returned parsed response.
+- Check CloudWatch logs for `rss_fetch_succeeded` or `rss_fetch_failed`, grouped by
+  requestId. INFO identifies starts/successes, WARN identifies retry activity, and
+  ERROR identifies aborts, exhausted attempts, and terminal failures.
+- `rss_fetch_aborted` indicates deadline exhaustion; `rss_fetch_max_attempts_reached`
+  means the initial request and all three retries failed. Both precede the final
+  failure event. Inspect the sanitized code and configured timeout.
+- Individual invalid entries appear in the successful response's feed.errors;
+  that is distinct from an invocation-level failure.
+- A 30-second function timeout is recommended. The handler leaves 250 milliseconds
+  for logging/return. The upload script does not change the function timeout.
+
+## Future database pipeline
+
+The remaining sections describe the planned database worker. They become applicable
+when Supabase is configured and the handler is wired to the ingestion service.
 
 ## Before first real run
 

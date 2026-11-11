@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { drizzle } from "drizzle-orm/postgres-js";
 import { and, eq, or, isNull, sql } from "drizzle-orm";
-import { IngestionError, MAX_RUN_ERROR_COUNT, type IngestionStore, type SourceLease, type TrackInput } from "@music-discovery/shared";
+import { IngestionError, MAX_RUN_ERROR_COUNT, type IngestionStore, type SourceLease } from "@music-discovery/shared";
 import { ingestionRuns, ingestionSources, tracks } from "./schema.ts";
 import { mergeTrack, metadataHash } from "./merge.ts";
 import { boundDatabaseOperation } from "./deadline.ts";
@@ -231,6 +231,3 @@ export function connectDatabase(connectionString: string, options: DatabaseOptio
     },
   };
 }
-
-export type { TrackInput };
-

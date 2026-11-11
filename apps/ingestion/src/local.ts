@@ -57,4 +57,3 @@ main().catch(() => {
   console.error("Ingestion failed. Inspect sanitized run records/logs; no credentials were printed.");
   process.exitCode = 1;
 });
-

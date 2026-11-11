@@ -27,7 +27,7 @@ export interface IngestionOptions {
   http?: HttpOptions;
 }
 
-export function runFailure(result: RunOutcome): IngestionError | undefined {
+function runFailure(result: RunOutcome): IngestionError | undefined {
   if (result.status === "failed" || result.status === "partial_failure") {
     return new IngestionError(result.errors[0]?.code ?? "INVALID_ENTRY");
   }
@@ -155,4 +155,3 @@ export async function ingestPitchfork(
     }
   }
 }
-

@@ -39,7 +39,9 @@ export function attribute(attributes: string, name: string): string | null {
 export function unquoteTitle(value: string): string {
   const text = value.trim();
   if ((text.startsWith("“") && text.endsWith("”")) ||
-      (text.startsWith('"') && text.endsWith('"'))) return text.slice(1, -1).trim();
+      (text.startsWith('"') && text.endsWith('"'))) {
+    return text.slice(1, -1).trim();
+  }
   return text;
 }
 

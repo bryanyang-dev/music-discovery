@@ -257,3 +257,156 @@ This section is updated as each task progresses, including verification evidence
   remain unchanged; no database migration was executed.
 - Whitespace validation included untracked source/docs as well as Git's diff check.
 - No dependency installations, cloud changes, deployments or commits.
+
+
+## Follow-up — RSS-only handler test mode
+
+- Commented out database imports, setup, ingestion orchestration, and cleanup in
+  the Lambda handler, retaining the code for restoration after connectivity tests.
+- The active handler fetches the fixed Pitchfork RSS URL with the existing deadline,
+  logs the parsed response as JSON, and returns it without database configuration.
+- Added handler coverage for fixture parsing/logging, sanitized fetch/parse failures,
+  deadline behavior, and an RSS-only bundled Lambda smoke test.
+- No dependencies installed, database operations performed, or AWS changes made.
+- Verification: typecheck, 58 application tests, 16 infrastructure tests, and three
+  built Lambda smoke tests passed (77 tests total). Live network/AWS execution
+  was not performed.
+
+## Follow-up — Lambda upload script
+
+- Added `pnpm upload:lambda <function-name> <region> [aws-profile]` for an existing
+  standalone test Lambda. Requires installed tools and authenticated CLI access.
+- Checks runtime/handler/ZIP configuration; runs typecheck, local tests, build and
+  bundle smoke tests; creates a fresh temporary ZIP; updates code with revision
+  protection and waits for completion. Leaves configuration/aliases unchanged.
+- Added local tests with fake AWS/pnpm commands for successful packaging, target
+  selection, preflight rejection, build failures, upload failure and waiter failure.
+- No AWS upload, installation, provisioning, or invocation was performed.
+- Verification: shell syntax, typecheck, 58 application tests, 16 infrastructure
+  tests, nine mocked upload tests, and three bundle smoke tests passed (86 total).
+
+## Authorized Lambda upload — musicRssFeed
+
+- Signed in to account `783161622181` using local profile `music-discovery`.
+- Ran `pnpm upload:lambda musicRssFeed us-east-2 music-discovery` with explicit
+  user authorization. Typecheck and all 86 local tests passed.
+- Uploaded the RSS-only bundle to `$LATEST`; AWS's function-updated-v2 waiter
+  completed successfully. Code SHA-256: `hsRsZFWnQjpAn/t/as5sgw3u5vOuNRKsqKffL/BCvX0=`.
+- No function configuration, database, schedule, or alias changes were made.
+  The function has not been invoked as part of this upload.
+
+## Follow-up — default upload target musicRssFetcher
+
+- `pnpm upload:lambda` now defaults to the full ARN of `musicRssFetcher` in account
+  `783161622181`, region `us-east-2`, using local profile `music-discovery`.
+- Explicit function/region/profile arguments still override the defaults.
+- Updated usage documentation and added a mocked regression test checking the
+  target ARN, region, and profile on every AWS command. No AWS changes performed.
+- Verification: shell syntax, all 10 mocked upload tests, typecheck, and Git
+  whitespace checks passed. No Lambda bundle source changed in this update.
+
+## Follow-up — simplify RSS handler timing
+
+- Removed the database ingestion timing policy from the active RSS handler.
+- RSS requests/retries share a 30-second maximum budget; under Lambda this is
+  capped at remaining invocation time minus 250 milliseconds for logging/return.
+  Local runs use 30 seconds. The one-minute database cleanup reserve is retained
+  only with the commented database path; the database orchestration is unchanged.
+- Updated deadline boundary tests and bundled parsing regression to exercise a
+  three-second Lambda context. Updated setup docs to suggest a 30-second timeout.
+- No AWS configuration changes or uploads performed in this update.
+- Verification: typecheck, 58 application tests, 16 infrastructure tests, 10 mocked
+  upload tests, and three rebuilt Lambda smoke tests passed (87 total).
+
+## Follow-up — AWS Lambda Context type
+
+- Installed `@types/aws-lambda` 8.10.164 as a root development dependency using
+  the exact approved pnpm command with lifecycle scripts disabled. Existing
+  dependency versions in the lockfile remain unchanged.
+- Replaced the custom LambdaContext interface with a type-only import of Context
+  from `aws-lambda`, including references in the preserved database handler.
+- Handler tests now provide complete Context fixtures checked by TypeScript.
+  Optional context for local invocation and RSS timing behavior are unchanged.
+- No AWS uploads or configuration changes performed.
+- Verification: typecheck, all 87 local tests, rebuilt Lambda bundle smoke tests,
+  and Git whitespace checks passed. The type-only import adds no runtime dependency.
+
+## Follow-up — handler retries and attempt logging
+
+- Added up to three handler retries after the initial RSS fetch (four attempts
+  maximum), with 1/2/4-second exponential backoff and Retry-After handling.
+- Disabled the HTTP layer's own retries on this path to prevent multiplying
+  attempts. Permanent failures and invalid feeds are not retried.
+- Every request and cancellation-aware backoff shares the RSS deadline; timeout
+  exhaustion stops retrying. Non-cancellation backoff failures preserve the
+  original fetch error.
+- Structured logs identify starts, attempt failures, retry schedules, success
+  responses, and one terminal failure, including attempt number and request ID.
+  Error logs contain sanitized codes, not raw exception messages or response bodies.
+- Added deterministic tests for exhaustion, recovery, permanent failures,
+  Retry-After, cancellation during backoff and actual HTTP attempt counts.
+- No dependencies installed or AWS code/configuration changes performed.
+- Verification: typecheck, 64 application tests, 16 infrastructure tests, 10 mocked
+  upload tests, three rebuilt Lambda smoke tests, and whitespace checks passed
+  (93 tests total). Live AWS/network execution was not performed.
+
+## Follow-up — named logEvent function
+
+- Extracted the logging closure into a module-level function with explicit logger,
+  request ID, event name, and detail arguments. Log payloads remain unchanged.
+- Typecheck, 11 handler tests, three rebuilt Lambda smoke tests, and whitespace
+  checks passed. No dependencies installed or AWS upload performed.
+
+## Follow-up — explicit abort and retry exhaustion logs
+
+- Added `rss_fetch_aborted` once for deadline exits, including failure before the
+  first attempt and cancellation during fetch or backoff.
+- Added `rss_fetch_max_attempts_reached` when a transient failure exhausts all four
+  attempts (initial request plus three retries), with attempt/maxAttempts/code.
+- Both events include requestId and retain the final `rss_fetch_failed` event.
+- Typecheck, 12 handler tests, three rebuilt Lambda smoke tests, and whitespace
+  checks passed. No AWS upload or configuration changes performed.
+
+## Follow-up — log severity
+
+- Added INFO/WARN/ERROR levels to structured log records and routed them to
+  console.log/console.warn/console.error respectively. Starts and successes are
+  INFO; attempt failures and retries are WARN; aborts, exhausted attempts and
+  terminal failures are ERROR. Request IDs and sanitized error codes are retained.
+- Replaced the single injected log function with a logger supporting those three
+  methods. Updated existing assertions and tested default console routing for
+  success, retry, exhaustion and abort paths. No dependencies or AWS changes.
+- Verification: typecheck, 13 handler tests, three rebuilt bundle smoke tests,
+  and whitespace checks passed. No upload performed.
+
+## Follow-up — log level constants
+
+- Defined INFO/WARN/ERROR once in a LOG_LEVEL const object and derived LogLevel
+  from its values. Log routing and call sites now reference those constants.
+- Log payloads and runtime behavior remain unchanged. No dependencies or AWS changes.
+- Verification: typecheck, 13 handler tests, three rebuilt bundle smoke tests,
+  and whitespace checks passed.
+
+## Cleanup before Supabase integration
+
+- Reviewed the full workspace and retained the PostgreSQL schema, migration
+  history, database service, parser and integration tests needed for Supabase.
+- Removed empty API/frontend placeholders, unused database-handler timing settings,
+  an unused database type re-export, and unnecessary exported/internal helpers.
+  Simplified redundant handler error normalization and expanded compressed control
+  flow without changing RSS retry, deadline or logging behavior.
+- Enabled TypeScript checks for unused locals/parameters and updated timing tests
+  to verify the actual work/template/lease relationship.
+- Rewrote the README around the current RSS-only handler and upload target.
+  Corrected deployment claims, removed obsolete commented-handler instructions,
+  and marked database/infrastructure runbooks as the future integration path.
+- This commit also includes the previously requested RSS-only Context types,
+  bounded retries, explicit abort/exhaustion logs, severity levels, named logging
+  function, and upload script defaulting to musicRssFetcher.
+- No dependency installation/removal, database setup/migration, Lambda upload or
+  AWS resource change was performed during this cleanup. Supabase setup is next.
+- Verification: typecheck with unused-code checks, 66 application tests, 16
+  infrastructure tests, 10 mocked upload tests, three rebuilt Lambda smoke tests
+  (95 total), offline fixture preview, shell syntax and whitespace checks passed.
+  Credential-pattern scan found no matches; environment/build files are ignored.
+  Real PostgreSQL integration and live AWS/network testing were not performed.
