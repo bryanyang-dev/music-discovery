@@ -927,3 +927,19 @@ This section is updated as each task progresses, including verification evidence
 - Verification: XML structure, feed classifications, description/content fields,
   linked-page JSON-LD and canonical redirects inspected. Relative Markdown links
   and Git whitespace passed; application tests were not rerun for documentation only.
+
+## 2026-11-11 23:34 UTC — Define worktree and human-review workflow
+
+- Added AGENTS.md instructions for one worktree/branch per agent task, coordinated
+  ownership and isolated test resources, with human commands for switching folders
+  and inspecting committed, uncommitted and untracked progress.
+- Required completed tasks to publish a PR against main for human review. Documented
+  fetching conversation, review submissions, paginated inline comments and checks,
+  then pushing follow-up fixes on the same branch.
+- Defined post-merge ownership/head/cleanliness checks, service/worktree/branch
+  cleanup, handling squash/rebase deletion refusals, and preservation of ignored
+  files/dependency approvals. Linked the workflow from README.
+- Implemented in a dedicated docs/worktree-collaboration worktree so unfinished
+  schema migration edits remain in their original checkout. Verified Git/GitHub
+  CLI syntax against installed help and primary documentation. Markdown links,
+  example paths and Git whitespace checked; application tests not rerun for docs.

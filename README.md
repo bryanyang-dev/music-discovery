@@ -208,6 +208,7 @@ Hosted track-ingestion integration remains unverified.
 
 ## Documentation
 
+- [Agent worktrees and human review](AGENTS.md#agent-worktrees-and-human-review): task isolation, progress inspection, PR feedback and cleanup.
 - [Stereogum evaluation](docs/sources/stereogum.md): mixed feed structure and proposed track extraction scope.
 - [Operations](docs/operations.md): configuration, logs, outcomes and recovery.
 - [Implementation specification](docs/ingestion-spec.md): parsing and lifecycle contracts.
