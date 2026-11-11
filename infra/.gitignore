@@ -1,0 +1,2 @@
+# Locally packaged Lambda artifacts; upload only after separate authorization.
+*.zip

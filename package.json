@@ -1,0 +1,29 @@
+{
+  "name": "music-discovery",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.8.1",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test packages/shared/test/*.test.ts packages/rss/test/*.test.ts packages/db/test/merge.test.ts packages/db/test/policy.test.ts packages/db/test/schema.test.ts packages/db/test/deadline.test.ts apps/ingestion/test/*.test.ts && node --test infra/test/*.test.mjs",
+    "test:db": "node --import tsx --test packages/db/test/upsert.test.ts",
+    "test:bundle": "pnpm build:lambda && node --test apps/ingestion/test/bundle.test.mjs",
+    "ingest": "node --env-file-if-exists=.env --import tsx apps/ingestion/src/local.ts",
+    "ingest:preview": "node --import tsx apps/ingestion/src/local.ts --preview",
+    "ingest:fixture": "node --import tsx apps/ingestion/src/local.ts --fixture",
+    "db:generate": "node --import tsx node_modules/drizzle-kit/bin.cjs generate",
+    "db:migrate": "node --env-file-if-exists=.env --import tsx packages/db/src/migrate.ts",
+    "build:lambda": "esbuild apps/ingestion/src/handler.ts --bundle --platform=node --target=node24 --format=cjs --outfile=dist/ingestion/index.cjs"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "drizzle-kit": "0.31.11",
+    "esbuild": "^0.25.0",
+    "tsx": "4.20.6",
+    "typescript": "5.9.3"
+  }
+}
+

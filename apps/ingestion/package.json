@@ -1,0 +1,11 @@
+{
+  "name": "@music-discovery/ingestion",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@music-discovery/db": "workspace:*",
+    "@music-discovery/rss": "workspace:*",
+    "@music-discovery/shared": "workspace:*"
+  }
+}
+

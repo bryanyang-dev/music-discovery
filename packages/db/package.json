@@ -1,0 +1,12 @@
+{
+  "name": "@music-discovery/db",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@music-discovery/shared": "workspace:*",
+    "drizzle-orm": "0.44.7",
+    "postgres": "3.4.7"
+  }
+}
+

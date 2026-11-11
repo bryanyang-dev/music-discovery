@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">
+<channel><title>Best New Tracks</title><link>https://pitchfork.com</link><description>Synthetic structural fixture</description>
+<item><title>“A Song: Part II”</title><link>https://pitchfork.com/reviews/tracks/example-a-song/?utm_source=test#top</link><guid isPermaLink="false">fixture-track-1</guid><pubDate>Tue, 10 Nov 2026 12:00:00 GMT</pubDate><dc:creator>Example Critic</dc:creator><description>A synthetic &amp; concise summary.</description><media:thumbnail url="https://media.pitchfork.com/example.jpg"/></item>
+</channel></rss>
+

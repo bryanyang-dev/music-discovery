@@ -1,0 +1,1118 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "Hourly music-feed ingestion with an on-demand Lambda, disabled-by-default scheduling, and separate delivery and execution failure queues.",
+  "Metadata": {
+    "AWSToolsMetrics": {
+      "AWSAgentToolkit": "aws-cloudformation@3"
+    },
+    "com.aws.cloudformation.Context": {
+      "arch": "Scheduler -> asynchronous Lambda -> existing database; separate terminal failure queues",
+      "must": [
+        "Review and deploy only in the confirmed selected Region us-east-2.",
+        "Keep schedule disabled until migrations and seed validation pass.",
+        "No secret values in parameters, outputs, payloads or logs."
+      ],
+      "ref": [
+        {
+          "at": "README.md",
+          "has": "Deployment prerequisites, retry semantics, rotation and cleanup"
+        }
+      ]
+    }
+  },
+  "Parameters": {
+    "ArtifactBucket": {
+      "Type": "String",
+      "MinLength": 3,
+      "MaxLength": 63,
+      "AllowedPattern": "[a-z0-9][a-z0-9.-]+[a-z0-9]",
+      "Description": "Existing private S3 artifact bucket in us-east-2; this stack does not create or modify it."
+    },
+    "ArtifactKey": {
+      "Type": "String",
+      "MinLength": 1,
+      "MaxLength": 1024,
+      "Description": "Existing ZIP object key; archive root must contain bundled index.cjs."
+    },
+    "ArtifactObjectVersion": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Optional immutable S3 version ID. Otherwise use a new object key for every release."
+    },
+    "DatabaseSecretArn": {
+      "Type": "String",
+      "AllowedPattern": "arn:aws:secretsmanager:us-east-2:[0-9]{12}:secret:[A-Za-z0-9/_+=.@-]+",
+      "Description": "Existing same-project Secrets Manager secret ARN in us-east-2. SecretString JSON must contain DATABASE_URL."
+    },
+    "SecretRefreshToken": {
+      "Type": "String",
+      "Default": "initial",
+      "MinLength": 1,
+      "MaxLength": 64,
+      "AllowedPattern": "[A-Za-z0-9._-]+",
+      "Description": "Non-secret release marker. Change after rotation to update Lambda configuration and refresh the dynamic reference."
+    },
+    "ScheduleState": {
+      "Type": "String",
+      "Default": "DISABLED",
+      "AllowedValues": [
+        "DISABLED",
+        "ENABLED"
+      ],
+      "Description": "Enable only after migration, seed, manual ingestion and alarm validation."
+    },
+    "LogRetentionDays": {
+      "Type": "Number",
+      "Default": 30,
+      "AllowedValues": [
+        7,
+        14,
+        30,
+        60,
+        90,
+        180,
+        365
+      ],
+      "Description": "Retention for Lambda logs; log group is retained when the stack is deleted."
+    },
+    "AlarmTopicArn": {
+      "Type": "String",
+      "Default": "",
+      "AllowedPattern": "^$|^arn:aws:sns:us-east-2:[0-9]{12}:[A-Za-z0-9_-]+$",
+      "Description": "Optional existing same-project standard SNS topic ARN in us-east-2; subscriptions and publish/KMS policy must already permit CloudWatch."
+    },
+    "PartialFailureFilterPattern": {
+      "Type": "String",
+      "Default": "\"partial_failure\"",
+      "MaxLength": 1024,
+      "Description": "Quoted unstructured partial_failure marker in the ingestion_completed JSON appended to Lambda text logs. Empty disables this filter and alarm."
+    }
+  },
+  "Conditions": {
+    "HasArtifactVersion": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "ArtifactObjectVersion"
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "HasAlarmTopic": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "AlarmTopicArn"
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "HasPartialFailureFilter": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "PartialFailureFilterPattern"
+            },
+            ""
+          ]
+        }
+      ]
+    }
+  },
+  "Resources": {
+    "DeliveryFailureQueue": {
+      "Type": "AWS::SQS::Queue",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Scheduler could not deliver the invocation before its delivery retry budget expired.",
+          "must": [
+            "Keep separate standard queues for delivery and execution failures.",
+            "No automatic consumer or replay; inspect and replay deliberately."
+          ]
+        }
+      },
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "MessageRetentionPeriod": 1209600,
+        "VisibilityTimeout": 300
+      }
+    },
+    "ExecutionFailureQueue": {
+      "Type": "AWS::SQS::Queue",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Lambda accepted the invocation but execution exhausted retries or event age; retains invocation records.",
+          "must": [
+            "Keep separate standard queues for delivery and execution failures.",
+            "No automatic consumer or replay; inspect and replay deliberately."
+          ]
+        }
+      },
+      "Properties": {
+        "SqsManagedSseEnabled": true,
+        "MessageRetentionPeriod": 1209600,
+        "VisibilityTimeout": 300
+      }
+    },
+    "FailureQueuePolicy": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Require TLS to access either retained failure queue.",
+          "must": [
+            "No public Allow grants; producers use scoped same-project role permissions."
+          ]
+        }
+      },
+      "Properties": {
+        "Queues": [
+          {
+            "Ref": "DeliveryFailureQueue"
+          },
+          {
+            "Ref": "ExecutionFailureQueue"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Deny",
+              "Principal": "*",
+              "Action": "sqs:*",
+              "Resource": [
+                {
+                  "Fn::GetAtt": [
+                    "DeliveryFailureQueue",
+                    "Arn"
+                  ]
+                },
+                {
+                  "Fn::GetAtt": [
+                    "ExecutionFailureQueue",
+                    "Arn"
+                  ]
+                }
+              ],
+              "Condition": {
+                "Bool": {
+                  "aws:SecureTransport": "false"
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "IngestionLogGroup": {
+      "Type": "AWS::Logs::LogGroup",
+      "DeletionPolicy": "Retain",
+      "UpdateReplacePolicy": "Retain",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Precreate logs so the function needs no log-group creation permission.",
+          "must": [
+            "Log no database URLs or secrets."
+          ]
+        }
+      },
+      "Properties": {
+        "LogGroupName": {
+          "Fn::Sub": "/aws/lambda/${AWS::StackName}-ingestion"
+        },
+        "RetentionInDays": {
+          "Ref": "LogRetentionDays"
+        }
+      }
+    },
+    "LambdaExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Runtime writes only its own logs and asynchronous failure destination; LogGroup Arn already ends in :* to cover streams; CloudFormation resolves the secret.",
+          "must": [
+            "No runtime Secrets Manager, S3, broad managed-policy, or VPC permissions."
+          ]
+        }
+      },
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "lambda.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole"
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "IngestionRuntime",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "logs:CreateLogStream",
+                    "logs:PutLogEvents"
+                  ],
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "IngestionLogGroup",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "sqs:SendMessage",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "ExecutionFailureQueue",
+                      "Arn"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "IngestionFunction": {
+      "Type": "AWS::Lambda::Function",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Single-source Pitchfork best-new-track worker with public outbound access and database fencing leases for per-record commits.",
+          "must": [
+            "Bundle exports async handler from root index.cjs.",
+            "Keep DATABASE_URL secret; no public ingress or function URL.",
+            "Concurrency one does not provide deduplication or distributed exclusion."
+          ]
+        }
+      },
+      "Properties": {
+        "Description": "Scheduled music discovery ingestion; DATABASE_URL is resolved at deployment.",
+        "Runtime": "nodejs24.x",
+        "Handler": "index.handler",
+        "PackageType": "Zip",
+        "Architectures": [
+          "x86_64"
+        ],
+        "Code": {
+          "S3Bucket": {
+            "Ref": "ArtifactBucket"
+          },
+          "S3Key": {
+            "Ref": "ArtifactKey"
+          },
+          "S3ObjectVersion": {
+            "Fn::If": [
+              "HasArtifactVersion",
+              {
+                "Ref": "ArtifactObjectVersion"
+              },
+              {
+                "Ref": "AWS::NoValue"
+              }
+            ]
+          }
+        },
+        "Role": {
+          "Fn::GetAtt": [
+            "LambdaExecutionRole",
+            "Arn"
+          ]
+        },
+        "MemorySize": 512,
+        "Timeout": 300,
+        "ReservedConcurrentExecutions": 1,
+        "Environment": {
+          "Variables": {
+            "DATABASE_URL": {
+              "Fn::Sub": "{{resolve:secretsmanager:${DatabaseSecretArn}:SecretString:DATABASE_URL}}"
+            },
+            "SECRET_REFRESH_TOKEN": {
+              "Ref": "SecretRefreshToken"
+            }
+          }
+        },
+        "LoggingConfig": {
+          "LogFormat": "Text",
+          "LogGroup": {
+            "Ref": "IngestionLogGroup"
+          }
+        }
+      }
+    },
+    "AsyncInvocationConfig": {
+      "Type": "AWS::Lambda::EventInvokeConfig",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Bound asynchronous retry time and preserve terminal failure records separately from delivery errors.",
+          "must": [
+            "Handler must throw sanitized codes on failed or partial_failure status; per-record writes must be idempotent and fenced by the source lease."
+          ]
+        }
+      },
+      "Properties": {
+        "FunctionName": {
+          "Ref": "IngestionFunction"
+        },
+        "Qualifier": "$LATEST",
+        "MaximumRetryAttempts": 2,
+        "MaximumEventAgeInSeconds": 3600,
+        "DestinationConfig": {
+          "OnFailure": {
+            "Destination": {
+              "Fn::GetAtt": [
+                "ExecutionFailureQueue",
+                "Arn"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "ScheduleGroup": {
+      "Type": "AWS::Scheduler::ScheduleGroup",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Dedicated group provides a precise Scheduler trust boundary.",
+          "must": [
+            "Do not add unrelated schedules to this group."
+          ]
+        }
+      },
+      "Properties": {}
+    },
+    "SchedulerExecutionRole": {
+      "Type": "AWS::IAM::Role",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Scheduler can invoke only ingestion and send terminal delivery failures only to its own queue.",
+          "must": [
+            "Scheduler SourceArn trust condition must reference the schedule group, not a schedule."
+          ]
+        }
+      },
+      "Properties": {
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "scheduler.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                },
+                "ArnEquals": {
+                  "aws:SourceArn": {
+                    "Fn::GetAtt": [
+                      "ScheduleGroup",
+                      "Arn"
+                    ]
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "DeliverIngestion",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "lambda:InvokeFunction",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "IngestionFunction",
+                      "Arn"
+                    ]
+                  }
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": "sqs:SendMessage",
+                  "Resource": {
+                    "Fn::GetAtt": [
+                      "DeliveryFailureQueue",
+                      "Arn"
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "HourlySchedule": {
+      "Type": "AWS::Scheduler::Schedule",
+      "DependsOn": [
+        "AsyncInvocationConfig",
+        "FailureQueuePolicy"
+      ],
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Hourly asynchronous trigger; fixed UTC minute with bounded delivery retries.",
+          "must": [
+            "Enable only after migration, seed and smoke-run validation.",
+            "Delivery retries and Lambda retries can cause duplicate work."
+          ]
+        }
+      },
+      "Properties": {
+        "Description": "Hourly ingestion at minute zero UTC; disabled until database validation.",
+        "GroupName": {
+          "Ref": "ScheduleGroup"
+        },
+        "ScheduleExpression": "cron(0 * * * ? *)",
+        "ScheduleExpressionTimezone": "UTC",
+        "FlexibleTimeWindow": {
+          "Mode": "OFF"
+        },
+        "State": {
+          "Ref": "ScheduleState"
+        },
+        "Target": {
+          "Arn": {
+            "Fn::GetAtt": [
+              "IngestionFunction",
+              "Arn"
+            ]
+          },
+          "RoleArn": {
+            "Fn::GetAtt": [
+              "SchedulerExecutionRole",
+              "Arn"
+            ]
+          },
+          "Input": "{\"source\":\"music-discovery.scheduler\"}",
+          "RetryPolicy": {
+            "MaximumEventAgeInSeconds": 3600,
+            "MaximumRetryAttempts": 3
+          },
+          "DeadLetterConfig": {
+            "Arn": {
+              "Fn::GetAtt": [
+                "DeliveryFailureQueue",
+                "Arn"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "LambdaErrorsAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Surface operational failures; existing SNS topic is optional.",
+          "must": [
+            "Missing metrics are not a heartbeat; inspect run freshness separately."
+          ]
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "One or more Lambda executions failed, including handler-thrown partial ingestion failures.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Errors",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "IngestionFunction"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "OKActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "LambdaThrottlesAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Surface operational failures; existing SNS topic is optional.",
+          "must": [
+            "Missing metrics are not a heartbeat; inspect run freshness separately."
+          ]
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "Reserved concurrency or project concurrency prevented execution.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "Throttles",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "IngestionFunction"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "OKActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "DestinationDeliveryFailuresAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Surface operational failures; existing SNS topic is optional.",
+          "must": [
+            "Missing metrics are not a heartbeat; inspect run freshness separately."
+          ]
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "Lambda could not publish an async invocation record; the execution queue may be empty despite lost records.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "DestinationDeliveryFailures",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "IngestionFunction"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "OKActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "AsyncEventsDroppedAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Surface operational failures; existing SNS topic is optional.",
+          "must": [
+            "Missing metrics are not a heartbeat; inspect run freshness separately."
+          ]
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "Lambda dropped async events after retries or maximum event age.",
+        "Namespace": "AWS/Lambda",
+        "MetricName": "AsyncEventsDropped",
+        "Dimensions": [
+          {
+            "Name": "FunctionName",
+            "Value": {
+              "Ref": "IngestionFunction"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "OKActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "DeliveryFailureQueueAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Surface operational failures; existing SNS topic is optional.",
+          "must": [
+            "Missing metrics are not a heartbeat; inspect run freshness separately."
+          ]
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "Unresolved messages in DeliveryFailureQueue; retained up to 14 days.",
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "DeliveryFailureQueue",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "OKActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "ExecutionFailureQueueAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Surface operational failures; existing SNS topic is optional.",
+          "must": [
+            "Missing metrics are not a heartbeat; inspect run freshness separately."
+          ]
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "Unresolved messages in ExecutionFailureQueue; retained up to 14 days.",
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "ExecutionFailureQueue",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "OKActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "SchedulerTargetErrorsAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Surface operational failures; existing SNS topic is optional.",
+          "must": [
+            "Missing metrics are not a heartbeat; inspect run freshness separately."
+          ]
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "Scheduler target invocation failed; delivery retries may still succeed.",
+        "Namespace": "AWS/Scheduler",
+        "MetricName": "TargetErrorCount",
+        "Dimensions": [
+          {
+            "Name": "ScheduleGroup",
+            "Value": {
+              "Ref": "ScheduleGroup"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "OKActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "SchedulerDroppedInvocationsAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Surface operational failures; existing SNS topic is optional.",
+          "must": [
+            "Missing metrics are not a heartbeat; inspect run freshness separately."
+          ]
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "Scheduler exhausted delivery policy; inspect its DLQ and delivery permissions.",
+        "Namespace": "AWS/Scheduler",
+        "MetricName": "InvocationDroppedCount",
+        "Dimensions": [
+          {
+            "Name": "ScheduleGroup",
+            "Value": {
+              "Ref": "ScheduleGroup"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "OKActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "PartialFailureMetricFilter": {
+      "Type": "AWS::Logs::MetricFilter",
+      "Condition": "HasPartialFailureFilter",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Match the partial_failure status marker without JSON field parsing; Lambda text output prefixes the serialized ingestion_completed event.",
+          "must": [
+            "Keep the quoted unstructured marker aligned with the handler status contract; do not depend on thrown error messages."
+          ]
+        }
+      },
+      "Properties": {
+        "LogGroupName": {
+          "Ref": "IngestionLogGroup"
+        },
+        "FilterPattern": {
+          "Ref": "PartialFailureFilterPattern"
+        },
+        "MetricTransformations": [
+          {
+            "MetricNamespace": {
+              "Fn::Sub": "MusicDiscovery/${AWS::StackName}"
+            },
+            "MetricName": "PartialIngestionFailures",
+            "MetricValue": "1",
+            "DefaultValue": 0,
+            "Unit": "Count"
+          }
+        ]
+      }
+    },
+    "PartialFailureAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Condition": "HasPartialFailureFilter",
+      "Metadata": {
+        "com.aws.cloudformation.Context": {
+          "why": "Surface operational failures; existing SNS topic is optional.",
+          "must": [
+            "Missing metrics are not a heartbeat; inspect run freshness separately."
+          ]
+        }
+      },
+      "Properties": {
+        "AlarmDescription": "Handler reported partial ingestion failure; successful rows may already be committed.",
+        "Namespace": {
+          "Fn::Sub": "MusicDiscovery/${AWS::StackName}"
+        },
+        "MetricName": "PartialIngestionFailures",
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "DatapointsToAlarm": 1,
+        "Threshold": 1,
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "OKActions": {
+          "Fn::If": [
+            "HasAlarmTopic",
+            [
+              {
+                "Ref": "AlarmTopicArn"
+              }
+            ],
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "Outputs": {
+    "FunctionName": {
+      "Description": "Function for a manually authorized smoke invocation.",
+      "Value": {
+        "Ref": "IngestionFunction"
+      }
+    },
+    "ScheduleArn": {
+      "Value": {
+        "Fn::GetAtt": [
+          "HourlySchedule",
+          "Arn"
+        ]
+      }
+    },
+    "ScheduleGroupName": {
+      "Value": {
+        "Ref": "ScheduleGroup"
+      }
+    },
+    "DeliveryFailureQueueUrl": {
+      "Value": {
+        "Ref": "DeliveryFailureQueue"
+      }
+    },
+    "ExecutionFailureQueueUrl": {
+      "Value": {
+        "Ref": "ExecutionFailureQueue"
+      }
+    },
+    "LogGroupName": {
+      "Value": {
+        "Ref": "IngestionLogGroup"
+      }
+    },
+    "ConfiguredScheduleState": {
+      "Value": {
+        "Ref": "ScheduleState"
+      }
+    }
+  }
+}

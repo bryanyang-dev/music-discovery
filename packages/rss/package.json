@@ -1,0 +1,11 @@
+{
+  "name": "@music-discovery/rss",
+  "private": true,
+  "type": "module",
+  "exports": "./src/index.ts",
+  "dependencies": {
+    "@music-discovery/shared": "workspace:*",
+    "rss-parser": "3.13.0"
+  }
+}
+
