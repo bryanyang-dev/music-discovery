@@ -771,3 +771,11 @@ This section is updated as each task progresses, including verification evidence
 - Verification: all 14 mocked-upload tests, Bash syntax, TypeScript typecheck,
   relative documentation links and Git whitespace passed. No dependencies were
   installed and no Lambda code upload, migration or infrastructure change occurred.
+
+## 2026-11-11 18:11 UTC — Add CLAUDE.md entry points
+
+- Added `CLAUDE.md` in the repository and in the home directory. Each imports its
+  sibling `AGENTS.md` with `@AGENTS.md`, so the instructions stay in one place.
+- Added a note in `AGENTS.md` to keep instructions there rather than in `CLAUDE.md`.
+- Verification: documentation-only change; no code, dependencies or infrastructure
+  were touched.

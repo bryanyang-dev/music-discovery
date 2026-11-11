@@ -50,6 +50,7 @@ Guidelines:
 - Record repository-specific discoveries, not generic programming knowledge.
 - Do not turn one-off incidents into permanent rules unless they reveal a recurring or important failure mode.
 - Keep `AGENTS.md` concise, organized, and free of outdated instructions.
+- `CLAUDE.md` only imports `AGENTS.md`; put all instruction changes in `AGENTS.md`.
 - Never weaken existing safety, testing, or quality requirements to make a task easier.
 
 The goal is to become more effective at working in this repository with every completed task.
