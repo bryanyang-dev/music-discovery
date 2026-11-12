@@ -27,16 +27,18 @@ Do not deploy infrastructure merely to upload code or change an environment valu
 
 ## Separate console-created track matcher
 
-The matcher is managed in the Lambda console independently of ingestion. Its name
-and region must be explicitly supplied to `pnpm upload:matcher`; the command
+The `trackMatcher` function is managed in the Lambda console independently of
+ingestion. `pnpm upload:matcher` uses the target ARN, region and profile from
+[`scripts/lambda-targets.sh`](../scripts/lambda-targets.sh); explicit arguments
+can override those defaults. The command
 packages `dist/track-matcher/index.cjs` and the CA at the ZIP root. It updates code
 only. Configure its Spotify environment, timeout and database grants/RLS using
 [the matcher operations guide](../README.md#track-matcher-lambda). No matcher
 resources or ingestion-to-matcher trigger are defined by the retained template.
 
-Use `pnpm upload:lambda <ingestion-function> <matcher-function> <region> [aws-profile]`
-for both apps in sequence. Explicit targets are required; failure stops later
-uploads and does not roll back an earlier successful upload.
+Use `pnpm upload:lambda` for both apps in sequence with the shared defaults, or
+override them with `<ingestion-function> <matcher-function> <region> [aws-profile]`.
+Failure stops later uploads and does not roll back an earlier successful upload.
 
 ## Retained CloudFormation design: not deployed
 

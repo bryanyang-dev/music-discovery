@@ -44,6 +44,8 @@ These rules supplement inherited instructions, including the dependency-installa
 - The existing Lambda is managed in the AWS console, including manually set
   environment variables. `pnpm upload:ingestion` updates ingestion code and the CA
   certificate only; the retained CloudFormation template is undeployed, and CDK is not in use.
+- Keep console-managed Lambda target ARNs, region and profile defaults in
+  `scripts/lambda-targets.sh`, shared by individual and combined uploads.
 - Keep current operations distinct from proposed infrastructure and historical
   TASKS.md entries. Verify behavior against code before documenting it as active.
 

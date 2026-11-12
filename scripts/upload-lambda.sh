@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repositoryRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repositoryRoot/scripts/lambda-targets.sh"
+
 application="ingestion"
 if [[ "${1:-}" == "--app" ]]; then
   application="${2:-}"
@@ -11,8 +14,12 @@ if [[ "${1:-}" == "--app" ]]; then
   shift 2
 fi
 
-if [[ $# -eq 0 && "$application" == "ingestion" ]]; then
-  set -- "arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher" "us-east-2" "music-discovery"
+if [[ $# -eq 0 ]]; then
+  if [[ "$application" == "ingestion" ]]; then
+    set -- "$ingestionFunction" "$lambdaRegion" "$lambdaProfile"
+  else
+    set -- "$matcherFunction" "$lambdaRegion" "$lambdaProfile"
+  fi
 elif [[ $# -lt 2 || $# -gt 3 ]]; then
   echo "Usage: bash scripts/upload-lambda.sh [--app ingestion|track-matcher] [<function-name> <region> [aws-profile]]" >&2
   exit 1
@@ -32,7 +39,6 @@ for requiredCommand in aws pnpm zip; do
   fi
 done
 
-repositoryRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repositoryRoot"
 
 certificatePath="$repositoryRoot/certs/prod-ca-2021.crt"

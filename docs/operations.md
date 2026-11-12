@@ -27,10 +27,12 @@ alarms, retention or concurrency. Check those settings in the console as needed.
 
 ## Track matcher operations
 
-The console-created track matcher is a separate deployment. Use
-`pnpm upload:matcher <function-name> <region> [aws-profile]` only for an authorized
-release, with Node.js 24 and `index.handler` configured in that function. Both individual
-upload commands run the full offline checks and bundle smoke tests, then package
+The console-created `trackMatcher` is a separate deployment. Use
+`pnpm upload:matcher` for an authorized release, with Node.js 24 and
+`index.handler` configured in that function. Shared target ARNs, region and profile
+are maintained in [`scripts/lambda-targets.sh`](../scripts/lambda-targets.sh).
+Explicit `<function-name> <region> [aws-profile]` arguments override these defaults.
+Both individual upload commands run the full offline checks and bundle smoke tests, then package
 only the selected app. See [matcher configuration and payload](../README.md#track-matcher-lambda)
 for Spotify variables, timeout, database permissions and example invocation.
 The matcher is invoked directly with one `trackId`; ingestion does not invoke it.
@@ -54,10 +56,11 @@ failure fails the invocation. An ingestion role without DELETE/RLS access on
 before releasing the updated ingestion bundle. Live Spotify/hosted matcher writes
 have not been verified by offline tests.
 
-`pnpm upload:lambda <ingestion-function> <matcher-function> <region> [aws-profile]`
-runs the ingestion upload and then the matcher upload, using the shared region and
-optional profile for both. It requires explicit, distinct targets, has no default,
-and stops on the first failure. An earlier successful upload is not rolled back.
+`pnpm upload:lambda` runs the ingestion upload and then the matcher upload using
+the shared defaults. Override both with
+`pnpm upload:lambda <ingestion-function> <matcher-function> <region> [aws-profile]`.
+Explicit targets must be distinct. The command stops on the first failure.
+An earlier successful upload is not rolled back.
 Each individual upload runs its release checks before updating that function.
 
 ## Source selection and registration

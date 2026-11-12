@@ -11,6 +11,7 @@ function fixture(context, failure = "") {
   mkdirSync(join(root, "scripts"));
   const script = join(root, "scripts/upload-all-lambdas.sh");
   copyFileSync(new URL("../upload-all-lambdas.sh", import.meta.url), script);
+  copyFileSync(new URL("../lambda-targets.sh", import.meta.url), join(root, "scripts/lambda-targets.sh"));
   const trace = join(root, "trace.txt");
   writeFileSync(join(root, "scripts/upload-lambda.sh"), `#!/usr/bin/env bash
 set -euo pipefail
@@ -41,8 +42,18 @@ test("combined upload selects each app and forwards explicit targets, region and
   }
 });
 
-test("combined upload rejects absent, incomplete, empty and identical targets before uploads", context => {
-  for (const args of [[], ["rss-test"], ["rss-test", "matcher-test"],
+test("combined upload uses the shared defaults when arguments are omitted", context => {
+  const state = fixture(context);
+  const result = state.run([]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(state.calls(), [
+    "--app ingestion arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher us-east-2 music-discovery",
+    "--app track-matcher arn:aws:lambda:us-east-2:783161622181:function:trackMatcher us-east-2 music-discovery",
+  ]);
+});
+
+test("combined upload rejects incomplete, empty and identical targets before uploads", context => {
+  for (const args of [["rss-test"], ["rss-test", "matcher-test"],
     ["rss-test", "rss-test", "us-east-2"], ["", "matcher-test", "us-east-2"],
     ["rss-test", "", "us-east-2"], ["rss-test", "matcher-test", ""],
     ["rss-test", "matcher-test", "us-east-2", "profile", "extra"]]) {

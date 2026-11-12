@@ -1,5 +1,18 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 19:10 UTC — Default Lambda upload targets from shared configuration
+
+- Centralized the console-managed target ARNs, region and local AWS profile in
+  `scripts/lambda-targets.sh`. Matcher defaults to `trackMatcher`; ingestion
+  retains `musicRssFetcher`, both in account 783161622181 / us-east-2.
+- Individual and combined upload commands now work without positional arguments;
+  explicit target/region/profile overrides and sequential failure behavior remain.
+  Updated README, operations, infrastructure status and repository guidance.
+- Validation: all 21 mocked upload tests, `pnpm typecheck`, Bash syntax checks and
+  `git diff --check` passed. Lambda runtime code is unchanged, so bundle tests
+  were not rerun. No AWS calls, uploads or dependency installations occurred.
+- Used a local branch in the existing checkout as requested; no worktree or PR.
+
 ## 2026-11-12 05:58 UTC — Clarify individual and combined Lambda upload commands
 
 - Added `pnpm upload:ingestion` with an explicit ingestion selector. Changed
