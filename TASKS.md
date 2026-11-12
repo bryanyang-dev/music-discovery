@@ -1,5 +1,16 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 19:43 UTC — Type the Lambda handler parameters directly
+
+- Applied `IngestionEvent` and `TrackMatcherEvent` directly to their handler event
+  parameters so callers receive the expected field hints and compile-time checks.
+  Kept runtime parsers to reject malformed invocation JSON before database access.
+- Updated the local ingestion caller to validate its CLI source argument before
+  constructing the typed payload. Invalid-payload tests explicitly bypass the
+  compile-time contract to continue verifying runtime rejection.
+- Corrected README guidance. Typechecking, all 184 offline tests, six Lambda
+  bundle tests, formatting and `git diff --check` passed. No deployment occurred.
+
 ## 2026-11-12 19:40 UTC — Define explicit Lambda invocation contracts
 
 - Added app-owned `IngestionEvent` (`sourceKey`) and `TrackMatcherEvent` (`trackId`)

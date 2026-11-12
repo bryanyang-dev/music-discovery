@@ -10,6 +10,7 @@ import {
 import { ingestSource } from "./run.ts";
 import { INGESTION_TIMING } from "./timing.ts";
 import { parseIngestionEvent } from "./event-validation.ts";
+import type { IngestionEvent } from "./models.ts";
 
 // RSS retries share a 30-second cap inside the overall ingestion work budget.
 const RSS_REQUEST_TIMEOUT_MS = 30_000;
@@ -207,8 +208,7 @@ function createFeedFetcher(
 }
 
 export function createHandler(dependencies: RssHandlerDependencies = {}) {
-  // Validate raw invocation JSON against the IngestionEvent contract.
-  return async (event?: unknown, context?: Context) => {
+  return async (event?: IngestionEvent, context?: Context) => {
     const logger = dependencies.logger ?? console;
     const requestId = context?.awsRequestId ?? null;
     let database: DatabaseConnection | undefined;

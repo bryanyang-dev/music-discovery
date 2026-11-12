@@ -228,8 +228,9 @@ Invoke it with a persisted editorial track UUID:
 
 The matcher invocation contract is [`TrackMatcherEvent`](apps/track-matcher/src/models.ts).
 Its [event parser](apps/track-matcher/src/event-validation.ts) validates raw input
-before database access. TypeScript contracts document the expected payloads;
-the Lambda entry points accept `unknown` until validation succeeds.
+before database access. Both handler signatures use their specific event types
+for TypeScript callers and editor hints. Runtime validation remains necessary
+because incoming JSON can bypass TypeScript checks.
 
 The UUID must identify an actual `tracks` row. Artist/title fields supplied in the
 event are ignored. The result includes `trackId`, `provider: "spotify"`, and

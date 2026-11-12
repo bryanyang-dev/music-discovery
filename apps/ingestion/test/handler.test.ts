@@ -224,6 +224,7 @@ test("event selects database configuration, then the stored URL is fetched and t
     },
   })({
     sourceKey: "configured_source",
+    // @ts-expect-error Raw invocation JSON may contain unsupported fields.
     feedUrl: "https://evil.example/ignored",
   });
   assert.equal(result.status, "succeeded");

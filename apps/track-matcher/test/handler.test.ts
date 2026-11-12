@@ -63,13 +63,15 @@ test("invalid invocation metadata is rejected before connecting", async () => {
     { trackId: "bad" },
     { trackId: 123 },
   ]) {
+    const handler = createHandler({
+      logger: quiet,
+      connect() {
+        assert.fail("must not connect");
+      },
+    });
     await assert.rejects(
-      createHandler({
-        logger: quiet,
-        connect() {
-          assert.fail("must not connect");
-        },
-      })(event),
+      // @ts-expect-error Deliberately invoke with malformed JSON to test runtime validation.
+      handler(event),
       /INVALID_TRACK_ID/,
     );
   }

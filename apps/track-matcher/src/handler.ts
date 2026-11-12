@@ -14,6 +14,7 @@ import { matchTrack } from "./run.ts";
 import { searchSpotify } from "./spotify/search.ts";
 import { MATCHER_TIMING } from "./timing.ts";
 import { parseTrackMatcherEvent } from "./event-validation.ts";
+import type { TrackMatcherEvent } from "./models.ts";
 
 type Connection = { matching: TrackMatchingStore; close(): Promise<void> };
 interface Dependencies {
@@ -31,8 +32,7 @@ interface Dependencies {
 }
 
 export function createHandler(dependencies: Dependencies = {}) {
-  // Validate raw invocation JSON against the TrackMatcherEvent contract.
-  return async (event?: unknown, context?: Context) => {
+  return async (event?: TrackMatcherEvent, context?: Context) => {
     const logger = dependencies.logger ?? console;
     const requestId = context?.awsRequestId ?? null;
     let connection: Connection | undefined;
