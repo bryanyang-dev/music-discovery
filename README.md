@@ -5,11 +5,13 @@ review pages, logs parsed metadata, and upserts tracks into Supabase alongside
 source/run records. Results report inserted, updated, unchanged and rejected counts.
 Successful runs save feed validators; unchanged feeds skip review fetches and writes.
 Pitchfork Best New Tracks is currently the only implemented publisher adapter.
+A React + Vite frontend in `apps/web` is scaffolded for upcoming UI work; it does
+not read ingestion data yet.
 
 ## Project structure
 
-This pnpm workspace separates the ingestion application, storage contract,
-PostgreSQL implementation and publisher HTTP/parsing code. Key files:
+This pnpm workspace separates the ingestion application, web frontend, storage
+contract, PostgreSQL implementation and publisher HTTP/parsing code. Key files:
 
 ```text
 apps/ingestion/
@@ -22,6 +24,13 @@ apps/ingestion/
     source-registration.ts            Registration argument validation and lifecycle
     timing.ts                         Overall work and cleanup budgets
   test/                               Handler, workflow, timing and bundle tests
+apps/web/
+  index.html                          Vite HTML entry
+  vite.config.ts                      Vite and React plugin configuration
+  tsconfig.json                       Browser/JSX TypeScript settings (excluded from root config)
+  src/
+    main.tsx                          React root mounting
+    App.tsx                           Placeholder app shell
 packages/
   shared/
     src/
@@ -174,13 +183,19 @@ The upload task requires installed AWS CLI, pnpm and zip, plus
 
 Use Node.js 24 and pnpm 12.8.1. Dependency installation requires explicit approval;
 for an approved fresh checkout use `pnpm install --frozen-lockfile --ignore-scripts`.
+Run that full install before any filtered `pnpm --filter <package> add`; a filtered
+add in a fresh worktree links only the filtered package, leaving other workspace
+packages unresolved. `pnpm-workspace.yaml` allows build scripts only for `supabase`
+and `esbuild`; pnpm 12 fails installs that would skip any other package's scripts.
 
 | Command               | Purpose                                                                                                         |
 | --------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `pnpm ingest`         | Run with `--source <key>`; loads `.env`, reads source configuration and persists tracks/runs |
 | `pnpm ingest:preview` | Run with `--source <key>`; read source configuration from Postgres and print tracks without writing                                                      |
 | `pnpm ingest:fixture` | Preview synthetic fixtures offline; no database                                                                 |
-| `pnpm typecheck`      | Check TypeScript                                                                                                |
+| `pnpm typecheck`      | Check TypeScript, including the web app                                                                         |
+| `pnpm web:dev`        | Start the Vite dev server for `apps/web`                                                                        |
+| `pnpm web:build`      | Typecheck and build `apps/web` into `apps/web/dist`                                                             |
 | `pnpm test`           | Offline application, template and mocked-upload tests                                                           |
 | `pnpm test:bundle`    | Build and smoke-test the Lambda bundle                                                                          |
 | `pnpm test:db`        | PostgreSQL integration tests; requires a pre-migrated disposable `TEST_DATABASE_URL`                            |

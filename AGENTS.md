@@ -6,6 +6,9 @@ These rules supplement inherited instructions, including the dependency-installa
 
 - Use a separate worktree and branch for each agent task. Preserve other tasks'
   checkouts and uncommitted work.
+- New worktrees have no `node_modules`. With install approval, run the full
+  frozen-lockfile install before filtered `pnpm --filter ... add` commands, which
+  set up only the filtered package and break cross-package imports in checks.
 - Open a PR against `main` for human review; address feedback on the same task
   branch. Leave merging to the human unless explicitly instructed otherwise.
 - Clean up task resources only after verifying the PR is merged and that no
