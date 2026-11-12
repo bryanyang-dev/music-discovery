@@ -1,6 +1,18 @@
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import type { FloorPosition } from "./models.ts";
-import { stageHeightPx, stageWidthPx, toStagePoint } from "./use-stage-scale.ts";
+import {
+  stageHeightPx,
+  stageWidthPx,
+  toStagePoint,
+} from "./use-stage-scale.ts";
 
 /** Pointer travel before a press on an item becomes a drag instead of a click. */
 const dragStartThresholdPx = 4;
@@ -21,13 +33,23 @@ interface FloorItemProps {
 
 function clampToStage(point: FloorPosition): FloorPosition {
   return {
-    x: Math.min(Math.max(point.x, stageEdgeMarginPx), stageWidthPx - stageEdgeMarginPx),
-    y: Math.min(Math.max(point.y, stageEdgeMarginPx), stageHeightPx - stageEdgeMarginPx),
+    x: Math.min(
+      Math.max(point.x, stageEdgeMarginPx),
+      stageWidthPx - stageEdgeMarginPx,
+    ),
+    y: Math.min(
+      Math.max(point.y, stageEdgeMarginPx),
+      stageHeightPx - stageEdgeMarginPx,
+    ),
   };
 }
 
 /** Wraps an object on the floor so it can be dragged around the mat. Its children keep their artboard positions. */
-export function FloorItem({ stageRef, dragHandle = "body", children }: FloorItemProps) {
+export function FloorItem({
+  stageRef,
+  dragHandle = "body",
+  children,
+}: FloorItemProps) {
   const [offset, setOffset] = useState<FloorPosition>({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const suppressNextClick = useRef(false);
@@ -44,7 +66,9 @@ export function FloorItem({ stageRef, dragHandle = "body", children }: FloorItem
     if (event.button !== 0 || stopTracking.current) {
       return;
     }
-    const pressedControl = event.target instanceof Element && event.target.closest(controlSelector) !== null;
+    const pressedControl =
+      event.target instanceof Element &&
+      event.target.closest(controlSelector) !== null;
     if (pressedControl && dragHandle === "body") {
       return;
     }
@@ -64,15 +88,23 @@ export function FloorItem({ stageRef, dragHandle = "body", children }: FloorItem
         return;
       }
       if (!dragged) {
-        const travelPx = Math.hypot(moveEvent.clientX - startClient.x, moveEvent.clientY - startClient.y);
+        const travelPx = Math.hypot(
+          moveEvent.clientX - startClient.x,
+          moveEvent.clientY - startClient.y,
+        );
         if (travelPx < dragStartThresholdPx) {
           return;
         }
         dragged = true;
         setDragging(true);
       }
-      const point = clampToStage(toStagePoint(stage, moveEvent.clientX, moveEvent.clientY));
-      setOffset({ x: startOffset.x + point.x - startPoint.x, y: startOffset.y + point.y - startPoint.y });
+      const point = clampToStage(
+        toStagePoint(stage, moveEvent.clientX, moveEvent.clientY),
+      );
+      setOffset({
+        x: startOffset.x + point.x - startPoint.x,
+        y: startOffset.y + point.y - startPoint.y,
+      });
     };
 
     function handleEnd(endEvent: globalThis.PointerEvent) {

@@ -10,6 +10,11 @@ test("matcher artifact exports handler and rejects invalid events before databas
 });
 
 test("matcher artifact fails safely with insufficient Lambda budget", async () => {
-  await assert.rejects(handler({ trackId: "00000000-0000-4000-8000-000000000001" },
-    { getRemainingTimeInMillis: () => 1 }), /RUN_DEADLINE/);
+  await assert.rejects(
+    handler(
+      { trackId: "00000000-0000-4000-8000-000000000001" },
+      { getRemainingTimeInMillis: () => 1 },
+    ),
+    /RUN_DEADLINE/,
+  );
 });

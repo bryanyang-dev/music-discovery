@@ -3,12 +3,12 @@
 These files hold application limits at the layer that enforces them. They do not
 configure AWS or Supabase. Keep Lambda timeout/concurrency settings in the console.
 
-| File | Owns | Change it when… |
-| --- | --- | --- |
-| [`apps/ingestion/src/timing.ts`](../apps/ingestion/src/timing.ts) | Total work time and time reserved for cleanup | Changing how long a run may work before finalizing and closing |
-| [`packages/db/src/policy.ts`](../packages/db/src/policy.ts) | Database connection, transaction and shutdown limits | Tuning database waits, socket lifetime or cleanup |
-| [`packages/rss/src/http-policy.ts`](../packages/rss/src/http-policy.ts) | HTTP request, retry and response-safety limits | Tuning publisher requests or accepted response sizes |
-| [`apps/ingestion/src/handler.ts`](../apps/ingestion/src/handler.ts) | RSS fetch phase and its retry loop | Changing feed retry behavior without changing review requests |
+| File                                                                    | Owns                                                 | Change it when…                                                |
+| ----------------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------------------------------------- |
+| [`apps/ingestion/src/timing.ts`](../apps/ingestion/src/timing.ts)       | Total work time and time reserved for cleanup        | Changing how long a run may work before finalizing and closing |
+| [`packages/db/src/policy.ts`](../packages/db/src/policy.ts)             | Database connection, transaction and shutdown limits | Tuning database waits, socket lifetime or cleanup              |
+| [`packages/rss/src/http-policy.ts`](../packages/rss/src/http-policy.ts) | HTTP request, retry and response-safety limits       | Tuning publisher requests or accepted response sizes           |
+| [`apps/ingestion/src/handler.ts`](../apps/ingestion/src/handler.ts)     | RSS fetch phase and its retry loop                   | Changing feed retry behavior without changing review requests  |
 
 ## Run budget: timing.ts
 
@@ -32,16 +32,16 @@ only the Lambda handler can account for remaining invocation time.
 
 ## Database limits: policy.ts
 
-| Setting | Current value | Purpose |
-| --- | --- | --- |
-| `maxConnectionCount` | 1 | Maximum sockets per client/invocation; concurrent invocations each have their own client |
-| `connectTimeoutSeconds` | 5 s | Bound opening a database connection |
-| `idleTimeoutSeconds` | 20 s | Close unused sockets; subsequent operations may reconnect |
-| `lockTimeoutMs` | 2,000 ms | Stop a SQL statement waiting too long for a database lock |
-| `statementTimeoutMs` | 8,000 ms | Bound each SQL statement, including lock waits |
-| `operationTimeoutMs` | 15,000 ms | Bound the whole database transaction from the client side |
-| `closeTimeoutSeconds` | 3 s | Bound graceful close and the wait for forced termination |
-| `forceCloseTimeoutSeconds` | 0 s | Tear down immediately on work cancellation/operation timeout |
+| Setting                    | Current value | Purpose                                                                                  |
+| -------------------------- | ------------- | ---------------------------------------------------------------------------------------- |
+| `maxConnectionCount`       | 1             | Maximum sockets per client/invocation; concurrent invocations each have their own client |
+| `connectTimeoutSeconds`    | 5 s           | Bound opening a database connection                                                      |
+| `idleTimeoutSeconds`       | 20 s          | Close unused sockets; subsequent operations may reconnect                                |
+| `lockTimeoutMs`            | 2,000 ms      | Stop a SQL statement waiting too long for a database lock                                |
+| `statementTimeoutMs`       | 8,000 ms      | Bound each SQL statement, including lock waits                                           |
+| `operationTimeoutMs`       | 15,000 ms     | Bound the whole database transaction from the client side                                |
+| `closeTimeoutSeconds`      | 3 s           | Bound graceful close and the wait for forced termination                                 |
+| `forceCloseTimeoutSeconds` | 0 s           | Tear down immediately on work cancellation/operation timeout                             |
 
 The intended order is **lock (2 s) < statement (8 s) < operation (15 s)**; connection
 setup (5 s) also fits inside the operation deadline. SQL timeouts are set inside
@@ -84,7 +84,6 @@ Relevant checks are `apps/ingestion/test/timing.test.ts`,
 `packages/db/test/deadline.test.ts` and `packages/rss/test/policy.test.ts`.
 The timing test compares against the **undeployed template's** 300 s timeout;
 it does not verify the live console setting.
-
 
 ## Track matcher budgets
 

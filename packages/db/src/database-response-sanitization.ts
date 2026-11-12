@@ -8,19 +8,62 @@ export const DATABASE_RESPONSE_LOG_LIMITS = {
 } as const;
 
 const TEXT_FIELDS = [
-  "id", "sourceId", "runId", "key", "name", "category", "trackTitle", "reviewTitle",
-  "reviewAuthor", "summary", "metadataHash", "releaseDate", "providerTrackId", "providerTitle",
+  "id",
+  "sourceId",
+  "runId",
+  "key",
+  "name",
+  "category",
+  "trackTitle",
+  "reviewTitle",
+  "reviewAuthor",
+  "summary",
+  "metadataHash",
+  "releaseDate",
+  "providerTrackId",
+  "providerTitle",
 ] as const;
-const DATE_FIELDS = ["lastAttemptAt", "lastSuccessAt", "createdAt", "startedAt", "finishedAt",
-  "reviewPublishedAt", "firstSeenAt", "lastSeenAt", "updatedAt", "matchedAt"] as const;
+const DATE_FIELDS = [
+  "lastAttemptAt",
+  "lastSuccessAt",
+  "createdAt",
+  "startedAt",
+  "finishedAt",
+  "reviewPublishedAt",
+  "firstSeenAt",
+  "lastSeenAt",
+  "updatedAt",
+  "matchedAt",
+] as const;
 const URL_FIELDS = ["feedUrl", "sourceUrl", "imageUrl", "providerUrl"] as const;
-const COUNT_FIELDS = ["found", "inserted", "updated", "unchanged", "rejected"] as const;
-const RUN_STATUSES = new Set(["running", "succeeded", "partial_failure", "failed", "skipped"]);
-const MATCH_STATUSES = new Set(["pending", "matched", "not_found", "ambiguous"]);
+const COUNT_FIELDS = [
+  "found",
+  "inserted",
+  "updated",
+  "unchanged",
+  "rejected",
+] as const;
+const RUN_STATUSES = new Set([
+  "running",
+  "succeeded",
+  "partial_failure",
+  "failed",
+  "skipped",
+]);
+const MATCH_STATUSES = new Set([
+  "pending",
+  "matched",
+  "not_found",
+  "ambiguous",
+]);
 const WRITE_OUTCOMES = new Set(["inserted", "updated", "unchanged"]);
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export function sanitizeDatabaseResponse(operation: string, result: unknown): Record<string, unknown> {
+export function sanitizeDatabaseResponse(
+  operation: string,
+  result: unknown,
+): Record<string, unknown> {
   let truncated = false;
   function text(value: string): string {
     if (value.length > DATABASE_RESPONSE_LOG_LIMITS.maxStringCharacters) {
@@ -50,7 +93,9 @@ export function sanitizeDatabaseResponse(operation: string, result: unknown): Re
     for (const key of DATE_FIELDS) {
       const date = input[key];
       if (date instanceof Date) {
-        output[key] = Number.isFinite(date.getTime()) ? date.toISOString() : null;
+        output[key] = Number.isFinite(date.getTime())
+          ? date.toISOString()
+          : null;
       } else if (date === null) {
         output[key] = null;
       }
@@ -68,9 +113,16 @@ export function sanitizeDatabaseResponse(operation: string, result: unknown): Re
         output[key] = input[key] === null ? null : "[redacted]";
       }
     }
-    for (const key of ["artists", "genres", "labels", "providerArtists"] as const) {
+    for (const key of [
+      "artists",
+      "genres",
+      "labels",
+      "providerArtists",
+    ] as const) {
       if (Array.isArray(input[key])) {
-        output[key] = limitedItems(input[key]).filter(item => typeof item === "string").map(text);
+        output[key] = limitedItems(input[key])
+          .filter((item) => typeof item === "string")
+          .map(text);
       }
     }
     for (const key of ["enabled", "notModified"] as const) {
@@ -86,7 +138,10 @@ export function sanitizeDatabaseResponse(operation: string, result: unknown): Re
     if (typeof input.status === "string" && RUN_STATUSES.has(input.status)) {
       output.status = input.status;
     }
-    if (typeof input.matchStatus === "string" && MATCH_STATUSES.has(input.matchStatus)) {
+    if (
+      typeof input.matchStatus === "string" &&
+      MATCH_STATUSES.has(input.matchStatus)
+    ) {
       output.matchStatus = input.matchStatus;
     }
     if (typeof input.status === "string" && MATCH_STATUSES.has(input.status)) {
@@ -95,26 +150,39 @@ export function sanitizeDatabaseResponse(operation: string, result: unknown): Re
     if (Object.hasOwn(input, "lastErrorCode")) {
       if (input.lastErrorCode === null) {
         output.lastErrorCode = null;
-      } else if (typeof input.lastErrorCode === "string" && Object.hasOwn(INGESTION_ERROR_MESSAGES, input.lastErrorCode)) {
+      } else if (
+        typeof input.lastErrorCode === "string" &&
+        Object.hasOwn(INGESTION_ERROR_MESSAGES, input.lastErrorCode)
+      ) {
         output.lastErrorCode = input.lastErrorCode;
       } else {
         output.lastErrorCode = "[redacted]";
       }
     }
     if (Array.isArray(input.errors)) {
-      output.errors = limitedItems(input.errors).map(issue => {
+      output.errors = limitedItems(input.errors).map((issue) => {
         if (issue === null || typeof issue !== "object") {
           return {};
         }
         const { code, sourceUrl } = issue as Record<string, unknown>;
         return {
-          code: typeof code === "string" && Object.hasOwn(INGESTION_ERROR_MESSAGES, code) ? code : "[redacted]",
-          sourceUrl: typeof sourceUrl === "string" ? text(safeLogUrl(sourceUrl) ?? "[redacted]") : null,
+          code:
+            typeof code === "string" &&
+            Object.hasOwn(INGESTION_ERROR_MESSAGES, code)
+              ? code
+              : "[redacted]",
+          sourceUrl:
+            typeof sourceUrl === "string"
+              ? text(safeLogUrl(sourceUrl) ?? "[redacted]")
+              : null,
         };
       });
     }
-    if (["set_statement_timeout", "set_lock_timeout"].includes(operation)
-      && typeof input.set_config === "string" && /^\d{1,10}$/.test(input.set_config)) {
+    if (
+      ["set_statement_timeout", "set_lock_timeout"].includes(operation) &&
+      typeof input.set_config === "string" &&
+      /^\d{1,10}$/.test(input.set_config)
+    ) {
       output.set_config = input.set_config;
     }
     return output;
@@ -127,12 +195,18 @@ export function sanitizeDatabaseResponse(operation: string, result: unknown): Re
   } else if (result === undefined || result === null) {
     response = null;
   } else if (typeof result === "string") {
-    response = WRITE_OUTCOMES.has(result) || (operation === "beginRun" && UUID_PATTERN.test(result))
-      ? result : "[redacted]";
+    response =
+      WRITE_OUTCOMES.has(result) ||
+      (operation === "beginRun" && UUID_PATTERN.test(result))
+        ? result
+        : "[redacted]";
   } else {
     response = row(result);
   }
-  if (Buffer.byteLength(JSON.stringify(response), "utf8") > DATABASE_RESPONSE_LOG_LIMITS.maxResponseBytes) {
+  if (
+    Buffer.byteLength(JSON.stringify(response), "utf8") >
+    DATABASE_RESPONSE_LOG_LIMITS.maxResponseBytes
+  ) {
     response = "[response omitted: exceeds log size limit]";
     truncated = true;
   }

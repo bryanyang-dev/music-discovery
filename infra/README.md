@@ -5,10 +5,10 @@
 The existing `musicRssFetcher` function in `us-east-2` is configured directly in the
 AWS Lambda console. Its environment variables were set manually:
 
-| Variable | Value |
-| --- | --- |
-| `DATABASE_URL` | Private runtime PostgreSQL connection string |
-| `NODE_EXTRA_CA_CERTS` | `/var/task/prod-ca-2021.crt` |
+| Variable              | Value                                        |
+| --------------------- | -------------------------------------------- |
+| `DATABASE_URL`        | Private runtime PostgreSQL connection string |
+| `NODE_EXTRA_CA_CERTS` | `/var/task/prod-ca-2021.crt`                 |
 
 Maintain credentials, timeout, execution role, networking, concurrency, triggers,
 log retention and destinations in the console. A 300-second timeout is recommended;
@@ -50,14 +50,14 @@ It assumes existing S3 artifacts and a Secrets Manager secret containing a
 `DATABASE_URL` JSON key; optional SNS notifications need an existing topic.
 These are template requirements, not prerequisites for the current upload task.
 
-| Template parameter | Purpose |
-| --- | --- |
-| `ArtifactBucket`, `ArtifactKey`, `ArtifactObjectVersion` | Existing code ZIP; use immutable keys or S3 versions |
-| `DatabaseSecretArn`, `SecretRefreshToken` | Deployment-time secret reference and explicit refresh marker |
-| `ScheduleState` | `DISABLED` by default |
-| `LogRetentionDays` | 30 by default, for the template's log group only |
-| `AlarmTopicArn` | Optional existing SNS topic |
-| `PartialFailureFilterPattern` | Optional quoted `"partial_failure"` log marker |
+| Template parameter                                       | Purpose                                                      |
+| -------------------------------------------------------- | ------------------------------------------------------------ |
+| `ArtifactBucket`, `ArtifactKey`, `ArtifactObjectVersion` | Existing code ZIP; use immutable keys or S3 versions         |
+| `DatabaseSecretArn`, `SecretRefreshToken`                | Deployment-time secret reference and explicit refresh marker |
+| `ScheduleState`                                          | `DISABLED` by default                                        |
+| `LogRetentionDays`                                       | 30 by default, for the template's log group only             |
+| `AlarmTopicArn`                                          | Optional existing SNS topic                                  |
+| `PartialFailureFilterPattern`                            | Optional quoted `"partial_failure"` log marker               |
 
 Before any future deployment, review these gaps against the current application:
 

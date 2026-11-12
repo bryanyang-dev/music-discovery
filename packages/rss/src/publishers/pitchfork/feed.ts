@@ -1,5 +1,11 @@
 import Parser from "rss-parser";
-import { IngestionError, safeLogUrl, type CacheValidators, type FeedEntry, type RunIssue } from "@music-discovery/shared";
+import {
+  IngestionError,
+  safeLogUrl,
+  type CacheValidators,
+  type FeedEntry,
+  type RunIssue,
+} from "@music-discovery/shared";
 import { imageUrl, plainText, validDate } from "../../text.ts";
 import { requestPitchfork } from "./http.ts";
 import { pitchforkUrl } from "./urls.ts";
@@ -61,11 +67,18 @@ export async function parsePitchforkFeed(xml: string): Promise<ParsedFeed> {
       imageUrl: imageUrl(item.thumbnail?.$?.url),
     });
   }
-  return { entries: [...entries.values()], found: feed.items.length, duplicates, errors };
+  return {
+    entries: [...entries.values()],
+    found: feed.items.length,
+    duplicates,
+    errors,
+  };
 }
 
 export async function fetchPitchforkFeed(
-  url: string, validators: CacheValidators, options: HttpOptions = {},
+  url: string,
+  validators: CacheValidators,
+  options: HttpOptions = {},
 ): Promise<FeedResponse> {
   const headers: Record<string, string> = {};
   if (validators.etag) {

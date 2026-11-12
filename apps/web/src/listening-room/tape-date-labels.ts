@@ -1,7 +1,28 @@
 const weekdayCodes = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"] as const;
-const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"] as const;
+const weekdayNames = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
 const weekdayKanji = ["日", "月", "火", "水", "木", "金", "土"] as const;
-const monthCodes = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"] as const;
+const monthCodes = [
+  "JAN",
+  "FEB",
+  "MAR",
+  "APR",
+  "MAY",
+  "JUN",
+  "JUL",
+  "AUG",
+  "SEP",
+  "OCT",
+  "NOV",
+  "DEC",
+] as const;
 const monthNames = [
   "January",
   "February",
@@ -54,7 +75,9 @@ export function describeTapeDate(isoDate: string): TapeDateLabels {
   const dayOfMonth = Number(match[3]);
   const utcDate = new Date(Date.UTC(year, monthIndex, dayOfMonth));
   const isRealDate =
-    utcDate.getUTCFullYear() === year && utcDate.getUTCMonth() === monthIndex && utcDate.getUTCDate() === dayOfMonth;
+    utcDate.getUTCFullYear() === year &&
+    utcDate.getUTCMonth() === monthIndex &&
+    utcDate.getUTCDate() === dayOfMonth;
   if (!isRealDate) {
     throw new Error(`Invalid tape date: ${isoDate}`);
   }

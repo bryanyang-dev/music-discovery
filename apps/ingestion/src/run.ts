@@ -97,17 +97,29 @@ async function executeRun(
   let validators: CacheValidators | null = null;
 
   try {
-    const response = await fetch(source.feedUrl, {
-      etag: source.etag,
-      lastModified: source.lastModified,
-    }, http);
+    const response = await fetch(
+      source.feedUrl,
+      {
+        etag: source.etag,
+        lastModified: source.lastModified,
+      },
+      http,
+    );
     validators = response.validators;
 
     if (response.notModified) {
       result.notModified = true;
     } else {
       onFeedParsed(response.feed);
-      await processFeedEntries(store, source, result, response.feed, http, onTrackExtracted, adapter);
+      await processFeedEntries(
+        store,
+        source,
+        result,
+        response.feed,
+        http,
+        onTrackExtracted,
+        adapter,
+      );
     }
   } catch (error) {
     result.status = "failed";
@@ -117,7 +129,11 @@ async function executeRun(
 
   result.errors = result.errors.slice(0, MAX_RUN_ERROR_COUNT);
   try {
-    return await store.finishRun(source, result, result.status === "succeeded" ? validators : null);
+    return await store.finishRun(
+      source,
+      result,
+      result.status === "succeeded" ? validators : null,
+    );
   } catch (error) {
     if (primaryFailure) {
       primaryFailure.cleanupErrors.push(errorCode(error));
@@ -132,7 +148,8 @@ export async function ingestSource(
   sourceKey: string,
   options: IngestionOptions = {},
 ): Promise<RunOutcome> {
-  const signal = options.signal ?? AbortSignal.timeout(INGESTION_TIMING.maxWorkDurationMs);
+  const signal =
+    options.signal ?? AbortSignal.timeout(INGESTION_TIMING.maxWorkDurationMs);
   // HTTP and database operations own cancellation; finalization uses its cleanup budget.
   const http = { ...options.http, signal };
   const source = await store.getSource(validateSourceKey(sourceKey));
@@ -141,13 +158,28 @@ export async function ingestSource(
   }
 
   const adapter = getSourceAdapter(source);
-  const onFeedParsed = options.onFeedParsed ?? ((feed: ParsedFeed) => {
-    console.log(JSON.stringify({ event: "feed_parsed", level: "INFO", feed }));
-  });
-  const onTrackExtracted = options.onTrackExtracted ?? ((track: TrackInput) => {
-    console.log(JSON.stringify({ event: "track_extracted", level: "INFO", track }));
-  });
+  const onFeedParsed =
+    options.onFeedParsed ??
+    ((feed: ParsedFeed) => {
+      console.log(
+        JSON.stringify({ event: "feed_parsed", level: "INFO", feed }),
+      );
+    });
+  const onTrackExtracted =
+    options.onTrackExtracted ??
+    ((track: TrackInput) => {
+      console.log(
+        JSON.stringify({ event: "track_extracted", level: "INFO", track }),
+      );
+    });
   const fetch = options.fetch ?? adapter.fetchFeed;
-  return executeRun(store, source, http, options.wrapFetch ? options.wrapFetch(fetch) : fetch,
-    onFeedParsed, onTrackExtracted, adapter);
+  return executeRun(
+    store,
+    source,
+    http,
+    options.wrapFetch ? options.wrapFetch(fetch) : fetch,
+    onFeedParsed,
+    onTrackExtracted,
+    adapter,
+  );
 }

@@ -293,19 +293,27 @@ add in a fresh worktree links only the filtered package, leaving other workspace
 packages unresolved. `pnpm-workspace.yaml` allows build scripts only for `supabase`
 and `esbuild`; pnpm 12 fails installs that would skip any other package's scripts.
 
-| Command               | Purpose                                                                                                         |
-| --------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `pnpm ingest`         | Run with `--source <key>`; loads `.env`, reads source configuration and persists tracks/runs |
-| `pnpm ingest:preview` | Run with `--source <key>`; read source configuration from Postgres and print tracks without writing                                                      |
-| `pnpm ingest:fixture` | Preview synthetic fixtures offline; no database                                                                 |
-| `pnpm typecheck`      | Check TypeScript, including the web app                                                                         |
-| `pnpm web:dev`        | Start the Vite dev server for `apps/web`                                                                        |
-| `pnpm web:build`      | Typecheck and build `apps/web` into `apps/web/dist`                                                             |
-| `pnpm test`           | Offline application, template and mocked-upload tests                                                           |
-| `pnpm test:bundle`    | Build and smoke-test both Lambda bundles                                                                          |
-| `pnpm test:db`        | PostgreSQL integration tests; requires a pre-migrated disposable `TEST_DATABASE_URL`                            |
-| `pnpm db:generate`    | Generate migrations locally                                                                                     |
-| `pnpm db:migrate`     | Apply migrations using `DATABASE_MIGRATION_URL`; explicit authorization required                                |
+Prettier is pinned as a root development dependency. Run `pnpm format` to format
+the workspace and `pnpm format:check` to check it without writing. Shared settings
+live in `.prettierrc.json`; `.prettierignore` excludes generated output, local agent
+settings, dependency locks, database migration history and parser fixtures. Prettier
+also respects `.gitignore`. Shell scripts and SQL are not formatted by this setup.
+
+| Command               | Purpose                                                                                             |
+| --------------------- | --------------------------------------------------------------------------------------------------- |
+| `pnpm ingest`         | Run with `--source <key>`; loads `.env`, reads source configuration and persists tracks/runs        |
+| `pnpm ingest:preview` | Run with `--source <key>`; read source configuration from Postgres and print tracks without writing |
+| `pnpm ingest:fixture` | Preview synthetic fixtures offline; no database                                                     |
+| `pnpm typecheck`      | Check TypeScript, including the web app                                                             |
+| `pnpm format`         | Format supported workspace files with Prettier                                                      |
+| `pnpm format:check`   | Check formatting without changing files                                                             |
+| `pnpm web:dev`        | Start the Vite dev server for `apps/web`                                                            |
+| `pnpm web:build`      | Typecheck and build `apps/web` into `apps/web/dist`                                                 |
+| `pnpm test`           | Offline application, template and mocked-upload tests                                               |
+| `pnpm test:bundle`    | Build and smoke-test both Lambda bundles                                                            |
+| `pnpm test:db`        | PostgreSQL integration tests; requires a pre-migrated disposable `TEST_DATABASE_URL`                |
+| `pnpm db:generate`    | Generate migrations locally                                                                         |
+| `pnpm db:migrate`     | Apply migrations using `DATABASE_MIGRATION_URL`; explicit authorization required                    |
 
 Use `.env.example` for private local credentials. Runtime connections use verified
 TLS and no prepared statements; migrations use a direct/session connection. When

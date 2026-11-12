@@ -55,24 +55,13 @@
     "ScheduleState": {
       "Type": "String",
       "Default": "DISABLED",
-      "AllowedValues": [
-        "DISABLED",
-        "ENABLED"
-      ],
+      "AllowedValues": ["DISABLED", "ENABLED"],
       "Description": "Enable only after migration, seed, manual ingestion and alarm validation."
     },
     "LogRetentionDays": {
       "Type": "Number",
       "Default": 30,
-      "AllowedValues": [
-        7,
-        14,
-        30,
-        60,
-        90,
-        180,
-        365
-      ],
+      "AllowedValues": [7, 14, 30, 60, 90, 180, 365],
       "Description": "Retention for Lambda logs; log group is retained when the stack is deleted."
     },
     "AlarmTopicArn": {
@@ -193,16 +182,10 @@
               "Action": "sqs:*",
               "Resource": [
                 {
-                  "Fn::GetAtt": [
-                    "DeliveryFailureQueue",
-                    "Arn"
-                  ]
+                  "Fn::GetAtt": ["DeliveryFailureQueue", "Arn"]
                 },
                 {
-                  "Fn::GetAtt": [
-                    "ExecutionFailureQueue",
-                    "Arn"
-                  ]
+                  "Fn::GetAtt": ["ExecutionFailureQueue", "Arn"]
                 }
               ],
               "Condition": {
@@ -222,9 +205,7 @@
       "Metadata": {
         "com.aws.cloudformation.Context": {
           "why": "Precreate logs so the function needs no log-group creation permission.",
-          "must": [
-            "Log no database URLs or secrets."
-          ]
+          "must": ["Log no database URLs or secrets."]
         }
       },
       "Properties": {
@@ -267,25 +248,16 @@
               "Statement": [
                 {
                   "Effect": "Allow",
-                  "Action": [
-                    "logs:CreateLogStream",
-                    "logs:PutLogEvents"
-                  ],
+                  "Action": ["logs:CreateLogStream", "logs:PutLogEvents"],
                   "Resource": {
-                    "Fn::GetAtt": [
-                      "IngestionLogGroup",
-                      "Arn"
-                    ]
+                    "Fn::GetAtt": ["IngestionLogGroup", "Arn"]
                   }
                 },
                 {
                   "Effect": "Allow",
                   "Action": "sqs:SendMessage",
                   "Resource": {
-                    "Fn::GetAtt": [
-                      "ExecutionFailureQueue",
-                      "Arn"
-                    ]
+                    "Fn::GetAtt": ["ExecutionFailureQueue", "Arn"]
                   }
                 }
               ]
@@ -311,9 +283,7 @@
         "Runtime": "nodejs24.x",
         "Handler": "index.handler",
         "PackageType": "Zip",
-        "Architectures": [
-          "x86_64"
-        ],
+        "Architectures": ["x86_64"],
         "Code": {
           "S3Bucket": {
             "Ref": "ArtifactBucket"
@@ -334,10 +304,7 @@
           }
         },
         "Role": {
-          "Fn::GetAtt": [
-            "LambdaExecutionRole",
-            "Arn"
-          ]
+          "Fn::GetAtt": ["LambdaExecutionRole", "Arn"]
         },
         "MemorySize": 512,
         "Timeout": 300,
@@ -380,10 +347,7 @@
         "DestinationConfig": {
           "OnFailure": {
             "Destination": {
-              "Fn::GetAtt": [
-                "ExecutionFailureQueue",
-                "Arn"
-              ]
+              "Fn::GetAtt": ["ExecutionFailureQueue", "Arn"]
             }
           }
         }
@@ -394,9 +358,7 @@
       "Metadata": {
         "com.aws.cloudformation.Context": {
           "why": "Dedicated group provides a precise Scheduler trust boundary.",
-          "must": [
-            "Do not add unrelated schedules to this group."
-          ]
+          "must": ["Do not add unrelated schedules to this group."]
         }
       },
       "Properties": {}
@@ -429,10 +391,7 @@
                 },
                 "ArnEquals": {
                   "aws:SourceArn": {
-                    "Fn::GetAtt": [
-                      "ScheduleGroup",
-                      "Arn"
-                    ]
+                    "Fn::GetAtt": ["ScheduleGroup", "Arn"]
                   }
                 }
               }
@@ -449,20 +408,14 @@
                   "Effect": "Allow",
                   "Action": "lambda:InvokeFunction",
                   "Resource": {
-                    "Fn::GetAtt": [
-                      "IngestionFunction",
-                      "Arn"
-                    ]
+                    "Fn::GetAtt": ["IngestionFunction", "Arn"]
                   }
                 },
                 {
                   "Effect": "Allow",
                   "Action": "sqs:SendMessage",
                   "Resource": {
-                    "Fn::GetAtt": [
-                      "DeliveryFailureQueue",
-                      "Arn"
-                    ]
+                    "Fn::GetAtt": ["DeliveryFailureQueue", "Arn"]
                   }
                 }
               ]
@@ -473,10 +426,7 @@
     },
     "HourlySchedule": {
       "Type": "AWS::Scheduler::Schedule",
-      "DependsOn": [
-        "AsyncInvocationConfig",
-        "FailureQueuePolicy"
-      ],
+      "DependsOn": ["AsyncInvocationConfig", "FailureQueuePolicy"],
       "Metadata": {
         "com.aws.cloudformation.Context": {
           "why": "Hourly asynchronous trigger; fixed UTC minute with bounded delivery retries.",
@@ -501,16 +451,10 @@
         },
         "Target": {
           "Arn": {
-            "Fn::GetAtt": [
-              "IngestionFunction",
-              "Arn"
-            ]
+            "Fn::GetAtt": ["IngestionFunction", "Arn"]
           },
           "RoleArn": {
-            "Fn::GetAtt": [
-              "SchedulerExecutionRole",
-              "Arn"
-            ]
+            "Fn::GetAtt": ["SchedulerExecutionRole", "Arn"]
           },
           "Input": "{\"source\":\"music-discovery.scheduler\"}",
           "RetryPolicy": {
@@ -519,10 +463,7 @@
           },
           "DeadLetterConfig": {
             "Arn": {
-              "Fn::GetAtt": [
-                "DeliveryFailureQueue",
-                "Arn"
-              ]
+              "Fn::GetAtt": ["DeliveryFailureQueue", "Arn"]
             }
           }
         }
@@ -774,10 +715,7 @@
           {
             "Name": "QueueName",
             "Value": {
-              "Fn::GetAtt": [
-                "DeliveryFailureQueue",
-                "QueueName"
-              ]
+              "Fn::GetAtt": ["DeliveryFailureQueue", "QueueName"]
             }
           }
         ],
@@ -834,10 +772,7 @@
           {
             "Name": "QueueName",
             "Value": {
-              "Fn::GetAtt": [
-                "ExecutionFailureQueue",
-                "QueueName"
-              ]
+              "Fn::GetAtt": ["ExecutionFailureQueue", "QueueName"]
             }
           }
         ],
@@ -1083,10 +1018,7 @@
     },
     "ScheduleArn": {
       "Value": {
-        "Fn::GetAtt": [
-          "HourlySchedule",
-          "Arn"
-        ]
+        "Fn::GetAtt": ["HourlySchedule", "Arn"]
       }
     },
     "ScheduleGroupName": {

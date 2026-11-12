@@ -4,7 +4,9 @@ import { databaseSsl } from "./packages/db/src/connection.ts";
 
 const connectionString = process.env.DATABASE_MIGRATION_URL;
 if (!connectionString) {
-  throw new Error("DATABASE_MIGRATION_URL is required; use the direct or session connection");
+  throw new Error(
+    "DATABASE_MIGRATION_URL is required; use the direct or session connection",
+  );
 }
 const ssl = databaseSsl(connectionString, {
   allowLocalNoTls: process.env.DATABASE_MIGRATION_ALLOW_LOCAL_NO_TLS === "1",

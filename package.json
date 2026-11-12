@@ -7,6 +7,8 @@
     "node": ">=24 <25"
   },
   "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit && pnpm --filter @music-discovery/web typecheck",
     "web:dev": "pnpm --filter @music-discovery/web dev",
     "web:build": "pnpm --filter @music-discovery/web build",
@@ -36,6 +38,7 @@
     "@types/node": "^24.0.0",
     "drizzle-kit": "0.31.11",
     "esbuild": "^0.25.0",
+    "prettier": "3.10.0",
     "supabase": "^3.1.0",
     "tsx": "4.20.6",
     "typescript": "5.9.3"

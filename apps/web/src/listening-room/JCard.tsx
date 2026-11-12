@@ -12,9 +12,18 @@ export function JCard({ tape, trackIndex }: JCardProps) {
 
   return (
     <>
-      <section className="j-card" aria-label={`Track list for ${labels.spokenDate}`}>
+      <section
+        className="j-card"
+        aria-label={`Track list for ${labels.spokenDate}`}
+      >
         <div className="j-card__cover">
-          <svg className="j-card__art" width="150" height="245" viewBox="0 0 150 245" aria-hidden="true">
+          <svg
+            className="j-card__art"
+            width="150"
+            height="245"
+            viewBox="0 0 150 245"
+            aria-hidden="true"
+          >
             <g className="night-only">
               <circle className="j-card__moon" cx="114" cy="46" r="15" />
               <g className="j-card__stars">
@@ -65,7 +74,11 @@ export function JCard({ tape, trackIndex }: JCardProps) {
               return (
                 <li
                   key={index}
-                  className={isCurrent ? "j-card__track j-card__track--current" : "j-card__track"}
+                  className={
+                    isCurrent
+                      ? "j-card__track j-card__track--current"
+                      : "j-card__track"
+                  }
                   aria-current={isCurrent ? "true" : undefined}
                 >
                   {track.title} · {track.artist}

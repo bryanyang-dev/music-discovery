@@ -1,22 +1,47 @@
 import { readFile } from "node:fs/promises";
 import { connectDatabase } from "@music-discovery/db";
-import { extractPitchforkTrack, parsePitchforkFeed } from "@music-discovery/rss";
-import { errorCode, IngestionError, toIngestionError, validateSourceKey, type TrackInput } from "@music-discovery/shared";
+import {
+  extractPitchforkTrack,
+  parsePitchforkFeed,
+} from "@music-discovery/rss";
+import {
+  errorCode,
+  IngestionError,
+  toIngestionError,
+  validateSourceKey,
+  type TrackInput,
+} from "@music-discovery/shared";
 import { handler } from "./handler.ts";
 import { previewSource } from "./preview.ts";
 
 function logTrack(track: TrackInput): void {
-  console.log(JSON.stringify({ event: "track_extracted", level: "INFO", track, writeSkipped: true }));
+  console.log(
+    JSON.stringify({
+      event: "track_extracted",
+      level: "INFO",
+      track,
+      writeSkipped: true,
+    }),
+  );
 }
 
 async function previewFixtures(): Promise<void> {
-  const fixtureRoot = new URL("../../../packages/rss/test/fixtures/", import.meta.url);
-  const feed = await parsePitchforkFeed(await readFile(new URL("pitchfork.xml", fixtureRoot), "utf8"));
+  const fixtureRoot = new URL(
+    "../../../packages/rss/test/fixtures/",
+    import.meta.url,
+  );
+  const feed = await parsePitchforkFeed(
+    await readFile(new URL("pitchfork.xml", fixtureRoot), "utf8"),
+  );
   const html = await readFile(new URL("review.html", fixtureRoot), "utf8");
-  const tracks = feed.entries.map((entry) => extractPitchforkTrack(entry, html));
+  const tracks = feed.entries.map((entry) =>
+    extractPitchforkTrack(entry, html),
+  );
   console.log(JSON.stringify({ event: "feed_parsed", level: "INFO", feed }));
   tracks.forEach(logTrack);
-  console.log(JSON.stringify({ tracks, rejected: feed.errors.length }, null, 2));
+  console.log(
+    JSON.stringify({ tracks, rejected: feed.errors.length }, null, 2),
+  );
 }
 
 async function previewRegisteredSource(sourceKey: string): Promise<void> {
@@ -32,9 +57,21 @@ async function previewRegisteredSource(sourceKey: string): Promise<void> {
       console.log(JSON.stringify(result));
       return;
     }
-    console.log(JSON.stringify({ event: "feed_parsed", level: "INFO", feed: result.feed }));
+    console.log(
+      JSON.stringify({
+        event: "feed_parsed",
+        level: "INFO",
+        feed: result.feed,
+      }),
+    );
     result.tracks.forEach(logTrack);
-    console.log(JSON.stringify({ tracks: result.tracks, rejected: result.feed.errors.length }, null, 2));
+    console.log(
+      JSON.stringify(
+        { tracks: result.tracks, rejected: result.feed.errors.length },
+        null,
+        2,
+      ),
+    );
   } catch (error) {
     primaryFailure = toIngestionError(error);
     throw primaryFailure;
@@ -69,6 +106,8 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   console.error(toIngestionError(error).message);
-  console.error("Usage: pnpm ingest --source <key> | pnpm ingest:preview --source <key> | pnpm ingest:fixture");
+  console.error(
+    "Usage: pnpm ingest --source <key> | pnpm ingest:preview --source <key> | pnpm ingest:fixture",
+  );
   process.exitCode = 1;
 });

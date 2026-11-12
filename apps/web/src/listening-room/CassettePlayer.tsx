@@ -20,7 +20,11 @@ interface CassettePlayerProps {
   readonly onEject: () => void;
 }
 
-function describeStatus(tape: Mixtape | null, trackIndex: number, playing: boolean): string {
+function describeStatus(
+  tape: Mixtape | null,
+  trackIndex: number,
+  playing: boolean,
+): string {
   if (!tape) {
     return "No tape in the player";
   }
@@ -28,7 +32,11 @@ function describeStatus(tape: Mixtape | null, trackIndex: number, playing: boole
   return `Side A, track ${trackIndex + 1} of ${tape.tracks.length}, ${playbackState}`;
 }
 
-function LcdReadout({ tape, trackIndex, playing }: Pick<CassettePlayerProps, "tape" | "trackIndex" | "playing">) {
+function LcdReadout({
+  tape,
+  trackIndex,
+  playing,
+}: Pick<CassettePlayerProps, "tape" | "trackIndex" | "playing">) {
   if (!tape) {
     return <span>テープなし</span>;
   }
@@ -101,7 +109,9 @@ export function CassettePlayer({
         </button>
       </div>
 
-      <div className="player__window">{tape ? <Cassette tape={tape} variant="player" /> : null}</div>
+      <div className="player__window">
+        {tape ? <Cassette tape={tape} variant="player" /> : null}
+      </div>
 
       <div className="player__footer">
         <div className="player__volume-label">VOL</div>
@@ -129,7 +139,13 @@ export function CassettePlayer({
           disabled={!hasTape}
           onClick={onTogglePlayback}
         >
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
             <path d={playing ? pauseIconPath : playIconPath} />
           </svg>
         </button>
@@ -140,7 +156,13 @@ export function CassettePlayer({
           disabled={!hasTape}
           onClick={onNextTrack}
         >
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
             <path d={nextIconPath} />
           </svg>
         </button>
@@ -151,7 +173,13 @@ export function CassettePlayer({
           disabled={!hasTape}
           onClick={onPreviousTrack}
         >
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
             <path d={previousIconPath} />
           </svg>
         </button>
@@ -162,7 +190,13 @@ export function CassettePlayer({
           disabled={!hasTape}
           onClick={onStop}
         >
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
             <rect x="5" y="5" width="10" height="10" />
           </svg>
         </button>

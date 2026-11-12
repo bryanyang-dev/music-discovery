@@ -131,6 +131,8 @@ The goal is to become more effective at working in this repository with every co
   custom properties in the feature's stylesheet rather than inline styles.
 - Keep changes focused. Add regression tests for affected boundaries and failure paths;
   verify typechecking and relevant tests, plus the Lambda bundle when affected.
+- Use `pnpm format` and `pnpm format:check` for formatting. Keep generated files,
+  applied database migrations and parser fixtures excluded in `.prettierignore`.
 - Report skipped checks and blockers honestly; record significant changes in `TASKS.md`.
 - Redaction tests must assert against their complete synthetic secret markers,
   not the word `private`, which also appears in macOS `/private/tmp` worktree paths.

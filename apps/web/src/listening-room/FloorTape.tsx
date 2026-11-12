@@ -17,11 +17,18 @@ interface FloorTapeProps {
 
 /** A full-size cassette on the floor, either resting where it was dropped or being carried. */
 export function FloorTape({ tape, center, lifted, handlers }: FloorTapeProps) {
-  const style = { left: center.x - floorCassetteHalfSizePx.x, top: center.y - floorCassetteHalfSizePx.y };
+  const style = {
+    left: center.x - floorCassetteHalfSizePx.x,
+    top: center.y - floorCassetteHalfSizePx.y,
+  };
 
   if (lifted || !handlers) {
     return (
-      <div className="floor-tape floor-tape--lifted" aria-hidden="true" style={style}>
+      <div
+        className="floor-tape floor-tape--lifted"
+        aria-hidden="true"
+        style={style}
+      >
         <Cassette tape={tape} variant="drag" />
       </div>
     );

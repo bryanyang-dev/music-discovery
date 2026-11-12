@@ -30,12 +30,12 @@ Article URLs redirected to versions without a trailing slash.
 
 Examples and extraction implications:
 
-| Article | Interpretation |
-| --- | --- |
-| [Index single](https://stereogum.com/2517667/index-heartbeat-glitch/music) | A clear single-track candidate; validate its primary headline/body and credits. |
-| [Parent Teacher EP announcement](https://stereogum.com/2517665/parent-teacher-announces-new-ep-celestial-mom-hear-eight-cents/music) | Promotes a lead single but also lists unreleased EP tracks. Extracting every quoted title would overcount recommendations. |
-| [DJ Seinfeld / Peter Xan collaboration](https://stereogum.com/2517660/dj-seinfeld-peter-xan-modern-dystopia/music) | Artist credits require explicit evidence; do not split every ampersand or treat all tags as performers. |
-| [2hollis album stream](https://stereogum.com/2517631/stream-2hollis-genre-bending-new-album-pirouette-featuring-writing-and-production-from-mk-gee/music) | Tagged New Music, but describes an album and several tracks/producers rather than a single recommendation. |
+| Article                                                                                                                                                   | Interpretation                                                                                                             |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [Index single](https://stereogum.com/2517667/index-heartbeat-glitch/music)                                                                                | A clear single-track candidate; validate its primary headline/body and credits.                                            |
+| [Parent Teacher EP announcement](https://stereogum.com/2517665/parent-teacher-announces-new-ep-celestial-mom-hear-eight-cents/music)                      | Promotes a lead single but also lists unreleased EP tracks. Extracting every quoted title would overcount recommendations. |
+| [DJ Seinfeld / Peter Xan collaboration](https://stereogum.com/2517660/dj-seinfeld-peter-xan-modern-dystopia/music)                                        | Artist credits require explicit evidence; do not split every ampersand or treat all tags as performers.                    |
+| [2hollis album stream](https://stereogum.com/2517631/stream-2hollis-genre-bending-new-album-pirouette-featuring-writing-and-production-from-mk-gee/music) | Tagged New Music, but describes an album and several tracks/producers rather than a single recommendation.                 |
 
 The site also publishes [weekly song lists](https://stereogum.com/2516820/the-5-best-songs-of-the-week-651/lists/the-5-best-songs-of-the-week)
 with multiple explicitly selected tracks in one article. That example was inspected

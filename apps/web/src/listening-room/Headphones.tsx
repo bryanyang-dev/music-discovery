@@ -23,12 +23,23 @@ export function Headphones({ playing }: HeadphonesProps) {
       <div className="headphones__cup headphones__cup--right" />
       <div className="headphones__shine headphones__shine--left" />
       <div className="headphones__shine headphones__shine--right" />
-      <svg className="headphones__cable" width="260" height="140" viewBox="0 0 260 140">
+      <svg
+        className="headphones__cable"
+        width="260"
+        height="140"
+        viewBox="0 0 260 140"
+      >
         <path d="M12 10 C -10 90, 60 130, 130 70 S 200 40, 240 60" />
       </svg>
       {playing
         ? notes.map((note) => (
-            <svg key={note.className} className={note.className} width={note.size} height={note.size} viewBox="0 0 20 20">
+            <svg
+              key={note.className}
+              className={note.className}
+              width={note.size}
+              height={note.size}
+              viewBox="0 0 20 20"
+            >
               <ellipse className="headphones__note-head" {...notePaths.head} />
               <path className="headphones__note-stem" d={notePaths.stem} />
             </svg>

@@ -75,16 +75,16 @@ new columns or a provider enum migration. Provider recording IDs are not globall
 unique because separate reviews can recommend the same recording. The foreign key
 uses NO ACTION, so deleting a referenced track requires explicit match cleanup.
 
-| Fields | Meaning |
-| --- | --- |
-| `match_status` | `pending` (default), `matched`, `not_found`, or `ambiguous` |
-| `provider_track_id`, `provider_url` | Durable provider identifier and public track/attribution URL |
-| `provider_title`, `provider_artists` | Optional provider recording metadata |
-| `uploader_name`, `uploader_url` | Optional uploader credit/profile, distinct from credited artists |
-| `match_method` | `review_link`, `search`, or `manual` |
-| `matched_at` | Time the current match was established |
-| `last_attempt_at`, `last_error_code` | Last lookup attempt and optional sanitized failure code |
-| `created_at`, `updated_at` | Creation and most recent write times; `updated_at` must be set by writers |
+| Fields                               | Meaning                                                                   |
+| ------------------------------------ | ------------------------------------------------------------------------- |
+| `match_status`                       | `pending` (default), `matched`, `not_found`, or `ambiguous`               |
+| `provider_track_id`, `provider_url`  | Durable provider identifier and public track/attribution URL              |
+| `provider_title`, `provider_artists` | Optional provider recording metadata                                      |
+| `uploader_name`, `uploader_url`      | Optional uploader credit/profile, distinct from credited artists          |
+| `match_method`                       | `review_link`, `search`, or `manual`                                      |
+| `matched_at`                         | Time the current match was established                                    |
+| `last_attempt_at`, `last_error_code` | Last lookup attempt and optional sanitized failure code                   |
+| `created_at`, `updated_at`           | Creation and most recent write times; `updated_at` must be set by writers |
 
 A `matched` row requires nonempty provider ID/URL, method and match timestamp.
 All other statuses require recording, uploader, method and match timestamp fields

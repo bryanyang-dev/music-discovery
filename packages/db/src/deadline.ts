@@ -29,18 +29,28 @@ export function boundDatabaseOperation<Result>(
       clearDeadline();
 
       const failure = new IngestionError(code);
-      const terminationTimeoutMs = DATABASE_POLICY.closeTimeoutSeconds * MILLISECONDS_PER_SECOND;
-      const terminationTimer = setTimeout(() => reject(failure), terminationTimeoutMs);
+      const terminationTimeoutMs =
+        DATABASE_POLICY.closeTimeoutSeconds * MILLISECONDS_PER_SECOND;
+      const terminationTimer = setTimeout(
+        () => reject(failure),
+        terminationTimeoutMs,
+      );
       const finishTermination = () => {
         clearTimeout(terminationTimer);
         reject(failure);
       };
-      Promise.resolve().then(terminate).then(finishTermination, finishTermination);
+      Promise.resolve()
+        .then(terminate)
+        .then(finishTermination, finishTermination);
     };
 
     const onAbort = () => stop("RUN_DEADLINE");
-    const operationTimeoutMs = options.timeoutMs ?? DATABASE_POLICY.operationTimeoutMs;
-    const operationTimer = setTimeout(() => stop("DATABASE_TIMEOUT"), operationTimeoutMs);
+    const operationTimeoutMs =
+      options.timeoutMs ?? DATABASE_POLICY.operationTimeoutMs;
+    const operationTimer = setTimeout(
+      () => stop("DATABASE_TIMEOUT"),
+      operationTimeoutMs,
+    );
     options.signal?.addEventListener("abort", onAbort, { once: true });
 
     if (options.signal?.aborted) {
@@ -72,4 +82,3 @@ export function boundDatabaseOperation<Result>(
     });
   });
 }
-

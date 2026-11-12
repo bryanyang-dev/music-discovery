@@ -22,7 +22,10 @@ export {
 } from "./models.ts";
 export type { IngestionStore } from "./ingestion-store.interface.ts";
 export { httpUrl, safeLogUrl } from "./urls.ts";
-export { validateSourceDefinition, validateSourceKey } from "./source-validation.ts";
+export {
+  validateSourceDefinition,
+  validateSourceKey,
+} from "./source-validation.ts";
 export type { SourceRegistry } from "./source-registry.interface.ts";
 
 export type { MatchingTrack, SpotifyMatch } from "./models.ts";

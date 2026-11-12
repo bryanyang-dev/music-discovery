@@ -1,4 +1,8 @@
-import { IngestionError, validateSourceDefinition, type SourceDefinition } from "@music-discovery/shared";
+import {
+  IngestionError,
+  validateSourceDefinition,
+  type SourceDefinition,
+} from "@music-discovery/shared";
 import { pitchforkAdapter } from "./publishers/pitchfork/adapter.ts";
 import type { SourceAdapter } from "./source-adapter.interface.ts";
 

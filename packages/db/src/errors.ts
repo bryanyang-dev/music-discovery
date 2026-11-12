@@ -23,15 +23,15 @@ const DATABASE_DRIVER_ERRORS: Readonly<Record<string, ErrorCode>> = {
   CONNECTION_DESTROYED: "DATABASE_CONNECTION_ERROR",
   ETIMEDOUT: "DATABASE_TIMEOUT",
   CONNECT_TIMEOUT: "DATABASE_TIMEOUT",
-  '28000': "DATABASE_AUTH_ERROR",
-  '28P01': "DATABASE_AUTH_ERROR",
-  '42501': "DATABASE_PERMISSION_ERROR",
-  '57014': "DATABASE_TIMEOUT",
-  '55P03': "DATABASE_TIMEOUT",
-  '3D000': "DATABASE_SCHEMA_ERROR",
-  '3F000': "DATABASE_SCHEMA_ERROR",
-  '42P01': "DATABASE_SCHEMA_ERROR",
-  '42703': "DATABASE_SCHEMA_ERROR",
+  "28000": "DATABASE_AUTH_ERROR",
+  "28P01": "DATABASE_AUTH_ERROR",
+  "42501": "DATABASE_PERMISSION_ERROR",
+  "57014": "DATABASE_TIMEOUT",
+  "55P03": "DATABASE_TIMEOUT",
+  "3D000": "DATABASE_SCHEMA_ERROR",
+  "3F000": "DATABASE_SCHEMA_ERROR",
+  "42P01": "DATABASE_SCHEMA_ERROR",
+  "42703": "DATABASE_SCHEMA_ERROR",
 };
 
 // Drizzle wraps driver errors in .cause. Bound traversal for cycles/deep wrappers.
@@ -49,7 +49,8 @@ export function databaseError(error: unknown): IngestionError {
     const details = cause as { code?: unknown; cause?: unknown };
     if (typeof details.code === "string") {
       const code = Object.hasOwn(DATABASE_DRIVER_ERRORS, details.code)
-        ? DATABASE_DRIVER_ERRORS[details.code] : undefined;
+        ? DATABASE_DRIVER_ERRORS[details.code]
+        : undefined;
       if (code) {
         return new IngestionError(code);
       }

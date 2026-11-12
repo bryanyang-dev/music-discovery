@@ -2,7 +2,12 @@ import { setTimeout as delay } from "node:timers/promises";
 import type { Context } from "aws-lambda";
 import type { FeedFetcher, HttpOptions } from "@music-discovery/rss";
 import { connectDatabase, type DatabaseLogger } from "@music-discovery/db";
-import { IngestionError, validateSourceKey, toIngestionError, type IngestionStore } from "@music-discovery/shared";
+import {
+  IngestionError,
+  validateSourceKey,
+  toIngestionError,
+  type IngestionStore,
+} from "@music-discovery/shared";
 import { ingestSource } from "./run.ts";
 import { INGESTION_TIMING } from "./timing.ts";
 
@@ -17,7 +22,8 @@ type DatabaseConnection = { store: IngestionStore; close(): Promise<void> };
 function createWorkSignal(context?: Context): AbortSignal {
   const workDurationMs = Math.min(
     INGESTION_TIMING.maxWorkDurationMs,
-    (context?.getRemainingTimeInMillis() ?? Infinity) - INGESTION_TIMING.cleanupReserveMs,
+    (context?.getRemainingTimeInMillis() ?? Infinity) -
+      INGESTION_TIMING.cleanupReserveMs,
   );
   if (workDurationMs <= 0) {
     throw new IngestionError("RUN_DEADLINE");
@@ -32,16 +38,19 @@ const LOG_LEVEL = {
   ERROR: "ERROR",
 } as const;
 
-type LogLevel = typeof LOG_LEVEL[keyof typeof LOG_LEVEL];
+type LogLevel = (typeof LOG_LEVEL)[keyof typeof LOG_LEVEL];
 
 interface RssHandlerDependencies {
   fetch?: FeedFetcher;
-  connect?: (url: string, options: {
-    signal: AbortSignal;
-    logger: DatabaseLogger;
-    requestId: string | null;
-    sourceKey: string;
-  }) => DatabaseConnection;
+  connect?: (
+    url: string,
+    options: {
+      signal: AbortSignal;
+      logger: DatabaseLogger;
+      requestId: string | null;
+      sourceKey: string;
+    },
+  ) => DatabaseConnection;
   databaseUrl?: string;
   http?: HttpOptions;
   logger?: RssLogger;
@@ -65,7 +74,11 @@ function logEvent(
   }
 }
 
-function createFeedFetcher(fetch: FeedFetcher, dependencies: RssHandlerDependencies, requestId: string | null): FeedFetcher {
+function createFeedFetcher(
+  fetch: FeedFetcher,
+  dependencies: RssHandlerDependencies,
+  requestId: string | null,
+): FeedFetcher {
   return async (url, validators, options) => {
     const {
       logger = console,
@@ -75,21 +88,25 @@ function createFeedFetcher(fetch: FeedFetcher, dependencies: RssHandlerDependenc
 
     try {
       const timeout = AbortSignal.timeout(RSS_REQUEST_TIMEOUT_MS);
-      const signal = options?.signal ? AbortSignal.any([options.signal, timeout]) : timeout;
+      const signal = options?.signal
+        ? AbortSignal.any([options.signal, timeout])
+        : timeout;
       while (true) {
         if (signal.aborted) {
           throw new IngestionError("RUN_DEADLINE");
         }
         attempt++;
-        logEvent(logger, requestId, LOG_LEVEL.INFO, "rss_fetch_started", { attempt });
+        logEvent(logger, requestId, LOG_LEVEL.INFO, "rss_fetch_started", {
+          attempt,
+        });
 
         try {
           // The handler owns retries; disable the HTTP layer's retry loop.
-          const response = await fetch(
-            url,
-            validators,
-            { ...options, signal, attempts: 1 },
-          );
+          const response = await fetch(url, validators, {
+            ...options,
+            signal,
+            attempts: 1,
+          });
           if (signal.aborted) {
             throw new IngestionError("RUN_DEADLINE");
           }
@@ -99,41 +116,64 @@ function createFeedFetcher(fetch: FeedFetcher, dependencies: RssHandlerDependenc
           });
           return response;
         } catch (error) {
-          let failure = error instanceof IngestionError
-            ? error
-            : new IngestionError("HTTP_ERROR");
+          let failure =
+            error instanceof IngestionError
+              ? error
+              : new IngestionError("HTTP_ERROR");
           if (signal.aborted) {
             failure = new IngestionError("RUN_DEADLINE");
           }
-          logEvent(logger, requestId, LOG_LEVEL.WARN, "rss_fetch_attempt_failed", {
-            attempt,
-            code: failure.code,
-            message: failure.message,
-          });
+          logEvent(
+            logger,
+            requestId,
+            LOG_LEVEL.WARN,
+            "rss_fetch_attempt_failed",
+            {
+              attempt,
+              code: failure.code,
+              message: failure.message,
+            },
+          );
 
           // HTTP marks transient status/network failures with retryAfterMs.
-          const retryable = failure.retryAfterMs !== null
-            && ["HTTP_ERROR", "NETWORK_ERROR", "REQUEST_TIMEOUT"].includes(failure.code);
+          const retryable =
+            failure.retryAfterMs !== null &&
+            ["HTTP_ERROR", "NETWORK_ERROR", "REQUEST_TIMEOUT"].includes(
+              failure.code,
+            );
           if (!retryable) {
             throw failure;
           }
           if (attempt > MAX_RETRY_COUNT) {
-            logEvent(logger, requestId, LOG_LEVEL.ERROR, "rss_fetch_max_attempts_reached", {
-              attempt,
-              maxAttempts: MAX_RETRY_COUNT + 1,
-              code: failure.code,
-              message: failure.message,
-            });
+            logEvent(
+              logger,
+              requestId,
+              LOG_LEVEL.ERROR,
+              "rss_fetch_max_attempts_reached",
+              {
+                attempt,
+                maxAttempts: MAX_RETRY_COUNT + 1,
+                code: failure.code,
+                message: failure.message,
+              },
+            );
             throw failure;
           }
 
-          const backoffMs = INITIAL_RETRY_DELAY_MS * RETRY_BACKOFF_MULTIPLIER ** (attempt - 1);
+          const backoffMs =
+            INITIAL_RETRY_DELAY_MS * RETRY_BACKOFF_MULTIPLIER ** (attempt - 1);
           const retryDelayMs = Math.max(backoffMs, failure.retryAfterMs ?? 0);
-          logEvent(logger, requestId, LOG_LEVEL.WARN, "rss_fetch_retry_scheduled", {
-            attempt,
-            nextAttempt: attempt + 1,
-            retryDelayMs,
-          });
+          logEvent(
+            logger,
+            requestId,
+            LOG_LEVEL.WARN,
+            "rss_fetch_retry_scheduled",
+            {
+              attempt,
+              nextAttempt: attempt + 1,
+              retryDelayMs,
+            },
+          );
           try {
             await sleep(retryDelayMs, signal);
           } catch {
@@ -145,20 +185,34 @@ function createFeedFetcher(fetch: FeedFetcher, dependencies: RssHandlerDependenc
         }
       }
     } catch (error) {
-      const failure = error instanceof IngestionError
-        ? error
-        : new IngestionError("HTTP_ERROR");
+      const failure =
+        error instanceof IngestionError
+          ? error
+          : new IngestionError("HTTP_ERROR");
       if (failure.code === "RUN_DEADLINE") {
-        logEvent(logger, requestId, LOG_LEVEL.ERROR, "rss_fetch_aborted", { attempt, code: failure.code, message: failure.message });
+        logEvent(logger, requestId, LOG_LEVEL.ERROR, "rss_fetch_aborted", {
+          attempt,
+          code: failure.code,
+          message: failure.message,
+        });
       }
-      logEvent(logger, requestId, LOG_LEVEL.ERROR, "rss_fetch_failed", { attempt, code: failure.code, message: failure.message });
+      logEvent(logger, requestId, LOG_LEVEL.ERROR, "rss_fetch_failed", {
+        attempt,
+        code: failure.code,
+        message: failure.message,
+      });
       throw failure;
     }
   };
 }
 
 export function sourceKeyFromEvent(event: unknown): string {
-  if (event === null || typeof event !== "object" || Array.isArray(event) || !Object.hasOwn(event, "sourceKey")) {
+  if (
+    event === null ||
+    typeof event !== "object" ||
+    Array.isArray(event) ||
+    !Object.hasOwn(event, "sourceKey")
+  ) {
     throw new IngestionError("INVALID_SOURCE");
   }
   return validateSourceKey((event as { sourceKey: unknown }).sourceKey);
@@ -177,27 +231,49 @@ export function createHandler(dependencies: RssHandlerDependencies = {}) {
       if (!databaseUrl) {
         throw new IngestionError("DATABASE_CONFIG_MISSING");
       }
-      database = (dependencies.connect ?? connectDatabase)(databaseUrl, { signal, logger, requestId, sourceKey });
+      database = (dependencies.connect ?? connectDatabase)(databaseUrl, {
+        signal,
+        logger,
+        requestId,
+        sourceKey,
+      });
       const result = await ingestSource(database.store, sourceKey, {
         http: dependencies.http ?? {},
         signal,
-        wrapFetch: (fetch) => createFeedFetcher(dependencies.fetch ?? fetch, dependencies, requestId),
+        wrapFetch: (fetch) =>
+          createFeedFetcher(
+            dependencies.fetch ?? fetch,
+            dependencies,
+            requestId,
+          ),
         onFeedParsed: (feed) => {
           logEvent(logger, requestId, LOG_LEVEL.INFO, "feed_parsed", { feed });
         },
         onTrackExtracted: (track) => {
-          logEvent(logger, requestId, LOG_LEVEL.INFO, "track_extracted", { track });
+          logEvent(logger, requestId, LOG_LEVEL.INFO, "track_extracted", {
+            track,
+          });
         },
       });
-      logEvent(logger, requestId, result.status === "succeeded" || result.status === "skipped"
-        ? LOG_LEVEL.INFO : LOG_LEVEL.ERROR, "ingestion_completed", { sourceKey, result });
+      logEvent(
+        logger,
+        requestId,
+        result.status === "succeeded" || result.status === "skipped"
+          ? LOG_LEVEL.INFO
+          : LOG_LEVEL.ERROR,
+        "ingestion_completed",
+        { sourceKey, result },
+      );
       if (result.status === "failed") {
         throw new IngestionError(result.errors[0]?.code ?? "DATABASE_ERROR");
       }
       return result;
     } catch (error) {
       failure = toIngestionError(error);
-      logEvent(logger, requestId, LOG_LEVEL.ERROR, "ingestion_failed", { code: failure.code, message: failure.message });
+      logEvent(logger, requestId, LOG_LEVEL.ERROR, "ingestion_failed", {
+        code: failure.code,
+        message: failure.message,
+      });
       throw failure;
     } finally {
       if (database) {
@@ -205,10 +281,16 @@ export function createHandler(dependencies: RssHandlerDependencies = {}) {
           await database.close();
         } catch (error) {
           const cleanupFailure = toIngestionError(error);
-          logEvent(logger, requestId, LOG_LEVEL.ERROR, "database_close_failed", {
-            code: cleanupFailure.code,
-            message: cleanupFailure.message,
-          });
+          logEvent(
+            logger,
+            requestId,
+            LOG_LEVEL.ERROR,
+            "database_close_failed",
+            {
+              code: cleanupFailure.code,
+              message: cleanupFailure.message,
+            },
+          );
           if (!failure) {
             throw cleanupFailure;
           }

@@ -2,7 +2,8 @@ import type { ErrorCode } from "./errors.ts";
 
 export const MAX_RUN_ERROR_COUNT = 100;
 
-export type StreamingMatchStatus = "pending" | "matched" | "not_found" | "ambiguous";
+export type StreamingMatchStatus =
+  "pending" | "matched" | "not_found" | "ambiguous";
 export type StreamingMatchMethod = "review_link" | "search" | "manual";
 
 export interface FeedEntry {
@@ -74,5 +75,11 @@ export interface MatchingTrack {
 }
 
 export type SpotifyMatch =
-  | { status: "matched"; providerTrackId: string; providerUrl: string; providerTitle: string | null; providerArtists: string[] | null }
+  | {
+      status: "matched";
+      providerTrackId: string;
+      providerUrl: string;
+      providerTitle: string | null;
+      providerArtists: string[] | null;
+    }
   | { status: "not_found" | "ambiguous" };

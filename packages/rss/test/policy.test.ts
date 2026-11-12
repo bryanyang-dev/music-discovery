@@ -7,7 +7,10 @@ import { plainText } from "../src/text.ts";
 
 const feedUrl = "https://pitchfork.com/feed/reviews/best/tracks/rss";
 
-const xml = await readFile(new URL("./fixtures/pitchfork.xml", import.meta.url), "utf8");
+const xml = await readFile(
+  new URL("./fixtures/pitchfork.xml", import.meta.url),
+  "utf8",
+);
 
 test("retry attempts, redirect count, and size limits retain the documented contract", () => {
   assert.equal(HTTP_POLICY.maxAttemptCount, 3);
@@ -18,12 +21,20 @@ test("retry attempts, redirect count, and size limits retain the documented cont
 
 test("cache validators accept the character limit and reject longer values", async () => {
   const expectedValidatorCharacters = 1_000;
-  for (const characterCount of [expectedValidatorCharacters, expectedValidatorCharacters + 1]) {
+  for (const characterCount of [
+    expectedValidatorCharacters,
+    expectedValidatorCharacters + 1,
+  ]) {
     const etag = "x".repeat(characterCount);
-    const result = await fetchPitchforkFeed(feedUrl, { etag: null, lastModified: null }, {
-      fetcher: async () => new Response(xml, { headers: { etag } }),
-    });
-    const expected = characterCount === expectedValidatorCharacters ? etag : null;
+    const result = await fetchPitchforkFeed(
+      feedUrl,
+      { etag: null, lastModified: null },
+      {
+        fetcher: async () => new Response(xml, { headers: { etag } }),
+      },
+    );
+    const expected =
+      characterCount === expectedValidatorCharacters ? etag : null;
     assert.equal(result.validators.etag, expected);
   }
 });
@@ -31,8 +42,14 @@ test("cache validators accept the character limit and reject longer values", asy
 test("feed entry limit accepts 100 entries and rejects 101", async () => {
   const item = xml.match(/<item>[\s\S]*?<\/item>/)![0];
   const emptyFeed = xml.replace(item, "");
-  const atLimit = emptyFeed.replace("</channel>", item.repeat(100) + "</channel>");
-  const beyondLimit = emptyFeed.replace("</channel>", item.repeat(101) + "</channel>");
+  const atLimit = emptyFeed.replace(
+    "</channel>",
+    item.repeat(100) + "</channel>",
+  );
+  const beyondLimit = emptyFeed.replace(
+    "</channel>",
+    item.repeat(101) + "</channel>",
+  );
 
   assert.equal((await parsePitchforkFeed(atLimit)).found, 100);
   await assert.rejects(parsePitchforkFeed(beyondLimit), /INVALID_FEED/);
