@@ -94,7 +94,7 @@ async function main(): Promise<void> {
     return;
   }
   if (args.length === 2 && args[0] === "--source") {
-    await handler({ sourceKey: args[1] });
+    await handler({ sourceKey: validateSourceKey(args[1]) });
     return;
   }
   if (args.length === 3 && args[0] === "--preview" && args[1] === "--source") {

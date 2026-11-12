@@ -1,5 +1,30 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 19:43 UTC — Type the Lambda handler parameters directly
+
+- Applied `IngestionEvent` and `TrackMatcherEvent` directly to their handler event
+  parameters so callers receive the expected field hints and compile-time checks.
+  Kept runtime parsers to reject malformed invocation JSON before database access.
+- Updated the local ingestion caller to validate its CLI source argument before
+  constructing the typed payload. Invalid-payload tests explicitly bypass the
+  compile-time contract to continue verifying runtime rejection.
+- Corrected README guidance. Typechecking, all 184 offline tests, six Lambda
+  bundle tests, formatting and `git diff --check` passed. No deployment occurred.
+
+## 2026-11-12 19:40 UTC — Define explicit Lambda invocation contracts
+
+- Added app-owned `IngestionEvent` (`sourceKey`) and `TrackMatcherEvent` (`trackId`)
+  interfaces in each app's `models.ts`. Separate typed event parsers validate raw
+  invocation input before database access and return only the supported fields.
+- Moved existing validation out of handler orchestration, preserving accepted
+  source keys/UUIDs and existing error codes. Entry points retain `unknown` until
+  parsing succeeds; extra fields remain ignored. Linked contracts and parsers
+  from README and updated tests to use the explicit shapes.
+- Validation: TypeScript checks, 147 application tests, 37 infrastructure/upload
+  tests, six Lambda bundle tests, formatting and `git diff --check` passed.
+  Added coverage for malformed payloads, inherited identifiers and ignored fields.
+  No dependencies, deployments, migrations or live service calls were needed.
+
 ## 2026-11-12 19:24 UTC — Add shared Prettier formatting
 
 - Installed exact root development dependency Prettier 3.10.0 with the approved

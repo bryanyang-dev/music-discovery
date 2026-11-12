@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { IngestionError, type SourceDefinition } from "@music-discovery/shared";
 import { getSourceAdapter } from "@music-discovery/rss";
-import { sourceKeyFromEvent } from "../src/handler.ts";
+import { parseIngestionEvent } from "../src/event-validation.ts";
 import {
   addIngestionSource,
   parseSourceArgs,
@@ -23,7 +23,7 @@ const args = [
 
 test("events must explicitly select a registered source key", () => {
   assert.equal(
-    sourceKeyFromEvent({ sourceKey: "another_feed" }),
+    parseIngestionEvent({ sourceKey: "another_feed" }).sourceKey,
     "another_feed",
   );
   for (const event of [
@@ -37,7 +37,7 @@ test("events must explicitly select a registered source key", () => {
     { sourceKey: "" },
     { sourceKey: "https://evil.example/" },
   ]) {
-    assert.throws(() => sourceKeyFromEvent(event), /INVALID_SOURCE/);
+    assert.throws(() => parseIngestionEvent(event), /INVALID_SOURCE/);
   }
 });
 

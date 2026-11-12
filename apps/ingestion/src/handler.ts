@@ -4,12 +4,13 @@ import type { FeedFetcher, HttpOptions } from "@music-discovery/rss";
 import { connectDatabase, type DatabaseLogger } from "@music-discovery/db";
 import {
   IngestionError,
-  validateSourceKey,
   toIngestionError,
   type IngestionStore,
 } from "@music-discovery/shared";
 import { ingestSource } from "./run.ts";
 import { INGESTION_TIMING } from "./timing.ts";
+import { parseIngestionEvent } from "./event-validation.ts";
+import type { IngestionEvent } from "./models.ts";
 
 // RSS retries share a 30-second cap inside the overall ingestion work budget.
 const RSS_REQUEST_TIMEOUT_MS = 30_000;
@@ -206,26 +207,14 @@ function createFeedFetcher(
   };
 }
 
-export function sourceKeyFromEvent(event: unknown): string {
-  if (
-    event === null ||
-    typeof event !== "object" ||
-    Array.isArray(event) ||
-    !Object.hasOwn(event, "sourceKey")
-  ) {
-    throw new IngestionError("INVALID_SOURCE");
-  }
-  return validateSourceKey((event as { sourceKey: unknown }).sourceKey);
-}
-
 export function createHandler(dependencies: RssHandlerDependencies = {}) {
-  return async (event?: unknown, context?: Context) => {
+  return async (event?: IngestionEvent, context?: Context) => {
     const logger = dependencies.logger ?? console;
     const requestId = context?.awsRequestId ?? null;
     let database: DatabaseConnection | undefined;
     let failure: IngestionError | undefined;
     try {
-      const sourceKey = sourceKeyFromEvent(event);
+      const { sourceKey } = parseIngestionEvent(event);
       const signal = createWorkSignal(context);
       const databaseUrl = dependencies.databaseUrl ?? process.env.DATABASE_URL;
       if (!databaseUrl) {

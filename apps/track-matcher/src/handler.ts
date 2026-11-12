@@ -13,6 +13,8 @@ import {
 import { matchTrack } from "./run.ts";
 import { searchSpotify } from "./spotify/search.ts";
 import { MATCHER_TIMING } from "./timing.ts";
+import { parseTrackMatcherEvent } from "./event-validation.ts";
+import type { TrackMatcherEvent } from "./models.ts";
 
 type Connection = { matching: TrackMatchingStore; close(): Promise<void> };
 interface Dependencies {
@@ -29,31 +31,14 @@ interface Dependencies {
   logger?: Pick<Console, "log" | "error">;
 }
 
-export function trackIdFromEvent(event: unknown): string {
-  const id =
-    event &&
-    typeof event === "object" &&
-    !Array.isArray(event) &&
-    Object.hasOwn(event, "trackId")
-      ? (event as { trackId: unknown }).trackId
-      : undefined;
-  if (
-    typeof id !== "string" ||
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
-  ) {
-    throw new IngestionError("INVALID_TRACK_ID");
-  }
-  return id;
-}
-
 export function createHandler(dependencies: Dependencies = {}) {
-  return async (event?: unknown, context?: Context) => {
+  return async (event?: TrackMatcherEvent, context?: Context) => {
     const logger = dependencies.logger ?? console;
     const requestId = context?.awsRequestId ?? null;
     let connection: Connection | undefined;
     let failure: IngestionError | undefined;
     try {
-      const trackId = trackIdFromEvent(event);
+      const { trackId } = parseTrackMatcherEvent(event);
       const workDurationMs = Math.min(
         MATCHER_TIMING.maxWorkDurationMs,
         (context?.getRemainingTimeInMillis() ?? Infinity) -
