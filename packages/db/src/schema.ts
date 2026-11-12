@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import type { RunIssue, RunStatus } from "@music-discovery/shared";
+import { boolean, check, date, index, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import type { RunIssue, RunStatus, StreamingMatchMethod, StreamingMatchStatus } from "@music-discovery/shared";
 
 export const ingestionSources = pgTable("ingestion_sources", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -40,6 +40,41 @@ export const tracks = pgTable("tracks", {
   index("tracks_review_published_at_idx").on(table.reviewPublishedAt.desc()),
   check("tracks_title_nonempty", sql`length(trim(${table.trackTitle})) > 0`),
   check("tracks_artists_nonempty", sql`cardinality(${table.artists}) > 0 AND array_position(${table.artists}, NULL) IS NULL AND array_to_string(${table.artists}, '') <> ''`),
+]).enableRLS();
+
+export const trackStreamingMatches = pgTable("track_streaming_matches", {
+  trackId: uuid("track_id").notNull().references(() => tracks.id),
+  provider: text("provider").notNull(),
+  matchStatus: text("match_status").$type<StreamingMatchStatus>().default("pending").notNull(),
+  providerTrackId: text("provider_track_id"),
+  providerUrl: text("provider_url"),
+  providerTitle: text("provider_title"),
+  providerArtists: text("provider_artists").array(),
+  uploaderName: text("uploader_name"),
+  uploaderUrl: text("uploader_url"),
+  matchMethod: text("match_method").$type<StreamingMatchMethod>(),
+  matchedAt: timestamp("matched_at", { withTimezone: true }),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  lastErrorCode: text("last_error_code"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.trackId, table.provider] }),
+  check("streaming_matches_provider_valid", sql`${table.provider} ~ '^[a-z][a-z0-9_]*$'`),
+  check("streaming_matches_status_valid", sql`${table.matchStatus} IN ('pending', 'matched', 'not_found', 'ambiguous')`),
+  check("streaming_matches_method_valid", sql`${table.matchMethod} IS NULL OR ${table.matchMethod} IN ('review_link', 'search', 'manual')`),
+  check("streaming_matches_recording_state_valid", sql`(
+    ${table.matchStatus} = 'matched'
+    AND ${table.providerTrackId} IS NOT NULL AND length(trim(${table.providerTrackId})) > 0
+    AND ${table.providerUrl} IS NOT NULL AND length(trim(${table.providerUrl})) > 0
+    AND ${table.matchMethod} IS NOT NULL AND ${table.matchedAt} IS NOT NULL
+  ) OR (
+    ${table.matchStatus} <> 'matched'
+    AND ${table.providerTrackId} IS NULL AND ${table.providerUrl} IS NULL
+    AND ${table.providerTitle} IS NULL AND ${table.providerArtists} IS NULL
+    AND ${table.uploaderName} IS NULL AND ${table.uploaderUrl} IS NULL
+    AND ${table.matchMethod} IS NULL AND ${table.matchedAt} IS NULL
+  )`),
 ]).enableRLS();
 
 export const ingestionRuns = pgTable("ingestion_runs", {

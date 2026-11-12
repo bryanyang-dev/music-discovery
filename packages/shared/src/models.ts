@@ -2,6 +2,9 @@ import type { ErrorCode } from "./errors.ts";
 
 export const MAX_RUN_ERROR_COUNT = 100;
 
+export type StreamingMatchStatus = "pending" | "matched" | "not_found" | "ambiguous";
+export type StreamingMatchMethod = "review_link" | "search" | "manual";
+
 export interface FeedEntry {
   sourceUrl: string;
   sourceGuid: string | null;

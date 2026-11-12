@@ -1,5 +1,27 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 05:08 UTC — Add streaming provider match schema
+
+- Added RLS-enabled `track_streaming_matches` with primary key `(track_id,
+  provider)`, a track foreign key, durable provider references, attribution data,
+  matching provenance, and independent lookup attempt/error fields. SQL checks
+  enforce supported statuses/methods and require complete references for matches;
+  unresolved states cannot retain recording details. Different editorial rows can
+  reference the same provider recording.
+- Generated additive `0001_track_streaming_matches.sql`, snapshot and journal;
+  preserved applied initial history. No migration, grants, policies, matching
+  workflow, backfill, or playback service was applied/deployed. Automatic match
+  invalidation is a documented future writer responsibility, not active behavior.
+- Updated README/specification and repository guidance for provider identity and
+  future matching writes. Corrected two existing redaction stack assertions to
+  check synthetic secret markers instead of rejecting macOS `/private/tmp` paths.
+- Validation: `pnpm typecheck` passed; `pnpm test` passed (122 application tests
+  and 30 infrastructure/upload tests); `pnpm test:bundle` passed (4 smoke tests).
+  A second `pnpm db:generate --name=track_streaming_matches` reported no drift.
+  `pnpm test:db` skipped all 8 tests, including the 2 new constraint/relationship
+  integration tests, because no disposable `TEST_DATABASE_URL` was configured.
+  PostgreSQL migration execution and constraint enforcement remain unverified.
+
 ## Current status
 
 - Lambda `musicRssFetcher` is managed in the AWS console; runtime environment

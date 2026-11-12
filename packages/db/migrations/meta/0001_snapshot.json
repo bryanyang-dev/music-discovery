@@ -1,0 +1,544 @@
+{
+  "id": "da13a585-23ff-42d8-996f-85c681aede90",
+  "prevId": "837cbb87-2d83-4d5d-8d2c-0f625bd8456d",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.ingestion_runs": {
+      "name": "ingestion_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'running'"
+        },
+        "not_modified": {
+          "name": "not_modified",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "errors": {
+          "name": "errors",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        }
+      },
+      "indexes": {
+        "ingestion_runs_source_started_idx": {
+          "name": "ingestion_runs_source_started_idx",
+          "columns": [
+            {
+              "expression": "source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "ingestion_runs_source_id_ingestion_sources_id_fk": {
+          "name": "ingestion_runs_source_id_ingestion_sources_id_fk",
+          "tableFrom": "ingestion_runs",
+          "tableTo": "ingestion_sources",
+          "columnsFrom": [
+            "source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "ingestion_runs_status_valid": {
+          "name": "ingestion_runs_status_valid",
+          "value": "\"ingestion_runs\".\"status\" IN ('running', 'succeeded', 'partial_failure', 'failed')"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.ingestion_sources": {
+      "name": "ingestion_sources",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pitchfork'"
+        },
+        "category": {
+          "name": "category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'best_new_track'"
+        },
+        "feed_url": {
+          "name": "feed_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        },
+        "last_attempt_at": {
+          "name": "last_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_success_at": {
+          "name": "last_success_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "etag": {
+          "name": "etag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_modified": {
+          "name": "last_modified",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "ingestion_sources_key_unique": {
+          "name": "ingestion_sources_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": true
+    },
+    "public.track_streaming_matches": {
+      "name": "track_streaming_matches",
+      "schema": "",
+      "columns": {
+        "track_id": {
+          "name": "track_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "match_status": {
+          "name": "match_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "provider_track_id": {
+          "name": "provider_track_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_url": {
+          "name": "provider_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_title": {
+          "name": "provider_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_artists": {
+          "name": "provider_artists",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uploader_name": {
+          "name": "uploader_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "uploader_url": {
+          "name": "uploader_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "match_method": {
+          "name": "match_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "matched_at": {
+          "name": "matched_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_attempt_at": {
+          "name": "last_attempt_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_error_code": {
+          "name": "last_error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "track_streaming_matches_track_id_tracks_id_fk": {
+          "name": "track_streaming_matches_track_id_tracks_id_fk",
+          "tableFrom": "track_streaming_matches",
+          "tableTo": "tracks",
+          "columnsFrom": [
+            "track_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "track_streaming_matches_track_id_provider_pk": {
+          "name": "track_streaming_matches_track_id_provider_pk",
+          "columns": [
+            "track_id",
+            "provider"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "streaming_matches_provider_valid": {
+          "name": "streaming_matches_provider_valid",
+          "value": "\"track_streaming_matches\".\"provider\" ~ '^[a-z][a-z0-9_]*$'"
+        },
+        "streaming_matches_status_valid": {
+          "name": "streaming_matches_status_valid",
+          "value": "\"track_streaming_matches\".\"match_status\" IN ('pending', 'matched', 'not_found', 'ambiguous')"
+        },
+        "streaming_matches_method_valid": {
+          "name": "streaming_matches_method_valid",
+          "value": "\"track_streaming_matches\".\"match_method\" IS NULL OR \"track_streaming_matches\".\"match_method\" IN ('review_link', 'search', 'manual')"
+        },
+        "streaming_matches_recording_state_valid": {
+          "name": "streaming_matches_recording_state_valid",
+          "value": "(\n    \"track_streaming_matches\".\"match_status\" = 'matched'\n    AND \"track_streaming_matches\".\"provider_track_id\" IS NOT NULL AND length(trim(\"track_streaming_matches\".\"provider_track_id\")) > 0\n    AND \"track_streaming_matches\".\"provider_url\" IS NOT NULL AND length(trim(\"track_streaming_matches\".\"provider_url\")) > 0\n    AND \"track_streaming_matches\".\"match_method\" IS NOT NULL AND \"track_streaming_matches\".\"matched_at\" IS NOT NULL\n  ) OR (\n    \"track_streaming_matches\".\"match_status\" <> 'matched'\n    AND \"track_streaming_matches\".\"provider_track_id\" IS NULL AND \"track_streaming_matches\".\"provider_url\" IS NULL\n    AND \"track_streaming_matches\".\"provider_title\" IS NULL AND \"track_streaming_matches\".\"provider_artists\" IS NULL\n    AND \"track_streaming_matches\".\"uploader_name\" IS NULL AND \"track_streaming_matches\".\"uploader_url\" IS NULL\n    AND \"track_streaming_matches\".\"match_method\" IS NULL AND \"track_streaming_matches\".\"matched_at\" IS NULL\n  )"
+        }
+      },
+      "isRLSEnabled": true
+    },
+    "public.tracks": {
+      "name": "tracks",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_url": {
+          "name": "source_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_guid": {
+          "name": "source_guid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "track_title": {
+          "name": "track_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "artists": {
+          "name": "artists",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "review_title": {
+          "name": "review_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_author": {
+          "name": "review_author",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "review_published_at": {
+          "name": "review_published_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "image_url": {
+          "name": "image_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "genres": {
+          "name": "genres",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "labels": {
+          "name": "labels",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::text[]"
+        },
+        "release_date": {
+          "name": "release_date",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata_hash": {
+          "name": "metadata_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_seen_at": {
+          "name": "first_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tracks_source_url_unique": {
+          "name": "tracks_source_url_unique",
+          "columns": [
+            {
+              "expression": "source_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "source_url",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "tracks_review_published_at_idx": {
+          "name": "tracks_review_published_at_idx",
+          "columns": [
+            {
+              "expression": "review_published_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "tracks_source_id_ingestion_sources_id_fk": {
+          "name": "tracks_source_id_ingestion_sources_id_fk",
+          "tableFrom": "tracks",
+          "tableTo": "ingestion_sources",
+          "columnsFrom": [
+            "source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tracks_title_nonempty": {
+          "name": "tracks_title_nonempty",
+          "value": "length(trim(\"tracks\".\"track_title\")) > 0"
+        },
+        "tracks_artists_nonempty": {
+          "name": "tracks_artists_nonempty",
+          "value": "cardinality(\"tracks\".\"artists\") > 0 AND array_position(\"tracks\".\"artists\", NULL) IS NULL AND array_to_string(\"tracks\".\"artists\", '') <> ''"
+        }
+      },
+      "isRLSEnabled": true
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

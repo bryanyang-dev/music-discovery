@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { and, eq } from "drizzle-orm";
 import { IngestionError, emptyCounts, type RunResult, type TrackInput } from "@music-discovery/shared";
 import { connectDatabase, type DatabaseLogger } from "../src/index.ts";
-import { ingestionRuns, ingestionSources, tracks } from "../src/schema.ts";
+import { ingestionRuns, ingestionSources, tracks, trackStreamingMatches } from "../src/schema.ts";
 
 const connectionString = process.env.TEST_DATABASE_URL;
 const localTest = process.env.TEST_DATABASE_ALLOW_LOCAL_NO_TLS === "1";
@@ -28,6 +28,10 @@ async function fixture(logger?: DatabaseLogger) {
     async cleanup() {
       try {
         for (const source of sources) {
+          const sourceTracks = await database.db.select({ id: tracks.id }).from(tracks).where(eq(tracks.sourceId, source.id));
+          for (const track of sourceTracks) {
+            await database.db.delete(trackStreamingMatches).where(eq(trackStreamingMatches.trackId, track.id));
+          }
           await database.db.delete(tracks).where(eq(tracks.sourceId, source.id));
           await database.db.delete(ingestionRuns).where(eq(ingestionRuns.sourceId, source.id));
           await database.db.delete(ingestionSources).where(eq(ingestionSources.id, source.id));
@@ -39,6 +43,79 @@ async function fixture(logger?: DatabaseLogger) {
 function successful(runId: string): RunResult {
   return { runId, status: "succeeded", ...emptyCounts(), inserted: 1, found: 1, errors: [], notModified: false };
 }
+
+test("streaming matches allow multiple providers and shared recordings across editorial tracks", {
+  skip: !connectionString,
+}, async () => {
+  const state = await fixture();
+  try {
+    const savedTracks = await state.database.db.insert(tracks).values(state.sources.map(source => ({
+      ...article, sourceId: source.id, metadataHash: "streaming-test",
+    }))).returning();
+    const first = savedTracks[0]!;
+    const second = savedTracks[1]!;
+    const matched = {
+      matchStatus: "matched" as const, providerTrackId: "shared-recording", providerUrl: "https://open.spotify.com/track/example",
+      matchMethod: "manual" as const, matchedAt: new Date(),
+    };
+    await state.database.db.insert(trackStreamingMatches).values([
+      { trackId: first.id, provider: "spotify", ...matched },
+      { trackId: first.id, provider: "soundcloud" },
+      { trackId: second.id, provider: "spotify", ...matched },
+    ]);
+    const rows = await state.database.db.select().from(trackStreamingMatches).where(eq(trackStreamingMatches.trackId, first.id));
+    assert.equal(rows.length, 2);
+    assert.equal(rows.find(row => row.provider === "soundcloud")?.matchStatus, "pending");
+    await assert.rejects(state.database.db.insert(trackStreamingMatches).values({ trackId: first.id, provider: "spotify" }));
+    await assert.rejects(state.database.db.insert(trackStreamingMatches).values({ trackId: randomUUID(), provider: "spotify" }));
+    await state.database.db.update(trackStreamingMatches).set({ lastAttemptAt: new Date(), lastErrorCode: "RATE_LIMITED" })
+      .where(and(eq(trackStreamingMatches.trackId, first.id), eq(trackStreamingMatches.provider, "spotify")));
+    const [afterError] = await state.database.db.select().from(trackStreamingMatches)
+      .where(and(eq(trackStreamingMatches.trackId, first.id), eq(trackStreamingMatches.provider, "spotify")));
+    assert.equal(afterError?.matchStatus, "matched");
+    assert.equal(afterError?.providerTrackId, matched.providerTrackId);
+  } finally {
+    await state.cleanup();
+  }
+});
+
+test("streaming constraints reject incomplete matches, invalid states, and unconfirmed recording data", {
+  skip: !connectionString,
+}, async () => {
+  const state = await fixture();
+  try {
+    const [track] = await state.database.db.insert(tracks).values({ ...article,
+      sourceId: state.sources[0]!.id, metadataHash: "streaming-test" }).returning();
+    assert.ok(track);
+    type MatchInsert = typeof trackStreamingMatches.$inferInsert;
+    const base = { trackId: track.id, provider: "spotify" };
+    const complete = { ...base, matchStatus: "matched" as const, providerTrackId: "recording",
+      providerUrl: "https://open.spotify.com/track/example", matchMethod: "search" as const, matchedAt: new Date() };
+    const invalid: MatchInsert[] = [
+      { ...base, provider: " " }, { ...base, provider: "Spotify" },
+      { ...base, matchStatus: "invalid" as never },
+      { ...complete, matchMethod: "invalid" as never },
+      { ...base, matchStatus: "matched" },
+      { ...complete, providerTrackId: null }, { ...complete, providerTrackId: " " },
+      { ...complete, providerUrl: null }, { ...complete, providerUrl: " " },
+      { ...complete, matchMethod: null }, { ...complete, matchedAt: null },
+      { ...base, providerTrackId: "unconfirmed" },
+      { ...base, matchStatus: "ambiguous", providerTitle: "Candidate" },
+      { ...base, matchStatus: "not_found", uploaderName: "Unconfirmed uploader" },
+      { ...base, matchedAt: new Date() },
+    ];
+    for (const row of invalid) {
+      await assert.rejects(state.database.db.insert(trackStreamingMatches).values(row));
+    }
+    for (const matchStatus of ["pending", "not_found", "ambiguous"] as const) {
+      await state.database.db.insert(trackStreamingMatches).values({ ...base, matchStatus });
+      await state.database.db.delete(trackStreamingMatches).where(eq(trackStreamingMatches.trackId, track.id));
+    }
+    await state.database.db.insert(trackStreamingMatches).values(complete);
+  } finally {
+    await state.cleanup();
+  }
+});
 
 test("database API logs transactions, each SQL statement and shutdown with sanitized row data", {
   skip: !connectionString,
