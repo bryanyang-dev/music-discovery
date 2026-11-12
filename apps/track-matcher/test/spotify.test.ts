@@ -58,6 +58,124 @@ test("client credentials and bounded catalog search return a canonical public UR
   );
 });
 
+test("Born Again matches Star Moles' bonus track and retains Spotify metadata", async () => {
+  const candidate = {
+    id: "1WwPlmneXG71vStRDHf6m5",
+    name: "Born Again - Bonus Track",
+    artists: [{ name: "Star Moles" }],
+  };
+  const mock = mockFetch([token(), page([candidate])]);
+  assert.deepEqual(
+    await searchSpotify(
+      { ...track, trackTitle: "Born Again", artists: ["Star Moles"] },
+      config,
+      signal(),
+      mock.fetcher,
+    ),
+    {
+      status: "matched",
+      providerTrackId: candidate.id,
+      providerUrl: `https://open.spotify.com/track/${candidate.id}`,
+      providerTitle: candidate.name,
+      providerArtists: ["Star Moles"],
+    },
+  );
+});
+
+test("trailing bonus track labels normalize on either title with common delimiters", async () => {
+  for (const name of [
+    "A Song - Bonus Track",
+    "A Song – Bonus Track",
+    "A Song — Bonus Track",
+    "A Song (Bonus Track)",
+    "A Song [Bonus Track]",
+    "  A SONG  ( BONUS   TRACK )  ",
+  ]) {
+    for (const [trackTitle, providerTitle] of [
+      ["A Song", name],
+      [name, "A Song"],
+    ] as const) {
+      const mock = mockFetch([
+        token(),
+        page([{ ...recording, name: providerTitle }]),
+      ]);
+      assert.equal(
+        (
+          await searchSpotify(
+            { ...track, trackTitle },
+            config,
+            signal(),
+            mock.fetcher,
+          )
+        ).status,
+        "matched",
+        `${trackTitle} / ${providerTitle}`,
+      );
+    }
+  }
+});
+
+test("bonus labels preserve title boundaries, version labels and artist requirements", async () => {
+  for (const candidate of [
+    { ...recording, name: "A Song Bonus Track" },
+    { ...recording, name: "A Song - Bonus Tracks" },
+    { ...recording, name: "A Song - Bonus Track Live" },
+    { ...recording, name: "A Song (Bonus Track) - Live" },
+    { ...recording, name: "A Song - Live - Bonus Track" },
+    { ...recording, name: "A Song - Remix (Bonus Track)" },
+    { ...recording, name: "A Song! - Bonus Track" },
+    {
+      ...recording,
+      name: "A Song - Bonus Track",
+      artists: [{ name: "An Artist - Bonus Track" }],
+    },
+    {
+      ...recording,
+      name: "A Song - Bonus Track",
+      artists: [...recording.artists, { name: "Guest" }],
+    },
+  ]) {
+    const mock = mockFetch([token(), page([candidate])]);
+    assert.deepEqual(
+      await searchSpotify(track, config, signal(), mock.fetcher),
+      { status: "not_found" },
+      candidate.name,
+    );
+  }
+  const mock = mockFetch([
+    token(),
+    page([{ ...recording, name: "Bonus Track" }]),
+  ]);
+  assert.equal(
+    (
+      await searchSpotify(
+        { ...track, trackTitle: "Bonus Track" },
+        config,
+        signal(),
+        mock.fetcher,
+      )
+    ).status,
+    "matched",
+  );
+});
+
+test("base and bonus titles with distinct provider IDs remain ambiguous", async () => {
+  const mock = mockFetch([
+    token(),
+    page([
+      recording,
+      {
+        ...recording,
+        id: "9876543210987654321098",
+        name: "A Song - Bonus Track",
+      },
+    ]),
+  ]);
+  assert.deepEqual(await searchSpotify(track, config, signal(), mock.fetcher), {
+    status: "ambiguous",
+  });
+});
+
 test("all credited artists must match and alternate versions remain distinct", async () => {
   for (const candidate of [
     { ...recording, name: "A Song - Live" },
