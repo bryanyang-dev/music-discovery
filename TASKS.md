@@ -981,3 +981,71 @@ This section is updated as each task progresses, including verification evidence
 - Validation: `pnpm typecheck` passed; `pnpm test` 104/104 and 30/30 passed;
   `pnpm test:bundle` 4/4 passed; `pnpm web:build` passed (220 kB JS, 69 kB gzip);
   Vite dev server served the page and transformed `App.tsx`, then was stopped.
+
+## 2026-11-12 00:53 UTC — Implement Floor Session cassette UI (frontend only)
+
+- Implemented the "C5 · Anime" Floor Session design in `apps/web/src/floor-session/`
+  for both day and night themes, using the mockups' values as per-theme CSS custom
+  properties. No backend integration: tapes come from `sample-mixtapes.ts`.
+- Working interactions: play/pause, stop, next/previous (LCD and J-card highlight),
+  OPEN eject, loading a tape by drag-and-drop or click, and the lamp theme switch.
+- Decisions the mockup left open: the 1440x900 artboard scales to fit its container;
+  playback is visual only (no audio) and starts stopped on track 1; the volume slider
+  has no effect; an empty player hides the J-card and disables transport keys; tape
+  colours follow the weekday, with cassette shell shades derived by `color-mix`.
+- Player state is a pure reducer (`mixtape-session.ts`) with tests in `apps/web/test`,
+  now part of `pnpm test`. The web `tsconfig.json` includes `test` and Node types.
+- Validation: `pnpm typecheck` passed; `pnpm test` 116/116 and 30/30 passed;
+  `pnpm web:build` passed (237 kB JS, 20 kB CSS). A headless Chrome run against the
+  dev server (not committed) passed checks for the initial state, transport, drag
+  onto the player, drop on the floor, click-to-load, eject, lamp theme switch,
+  dark-preference start and scaling to 960x700, with no page errors; day and night
+  screenshots matched the mockups. `pnpm test:bundle` was not rerun: the Lambda
+  bundle is unaffected.
+
+## 2026-11-12 01:12 UTC — Let tapes rest on the floor (PR #4 follow-up)
+
+- Reported: a tape put down on the mat could not be picked up and moved. A tape
+  dropped outside the player previously snapped back to the box.
+- Tapes now have three places: player, box, or floor. A dropped tape stays where it
+  lands (kept fully on the artboard), can be dragged again from its grip point,
+  dropped on the box to put it away, or dropped on/clicked to load it. Its box slot
+  reads "ON THE FLOOR". The player itself is still fixed.
+- `mixtape-session.ts` gained `floorTapes` with `placeTapeOnFloor`/`returnTapeToBox`;
+  `use-tape-drag.ts` reports the drop target and also recovers if the browser takes
+  the pointer mid-drag.
+- Validation: `pnpm typecheck` passed; `pnpm test` 120/120 and 30/30 passed;
+  `pnpm web:build` passed. The headless Chrome run passed with new checks: drop on
+  the mat, move twice, a second floor tape clamped at the edge, return to box, load
+  from the mat by drag and by click; no page errors.
+
+## 2026-11-12 01:20 UTC — Darken the headphones (PR #4 follow-up)
+
+- Changed the headphone cups from the mockups' pink to dark violet in both themes
+  (`--headphone-cup` in `floor-session.css`), by request. This departs from the
+  "C5 · Anime" mockups. Checked with day and night screenshots; `pnpm web:build` passed.
+- Follow-up: lightened the night-theme cups (`#5a5488` over `#453f6c`) so they stand
+  out from the dark floor; rechecked with a night screenshot and `pnpm web:build`.
+
+## 2026-11-12 01:19 UTC — Rename the frontend feature to listening-room
+
+- Renamed `apps/web/src/floor-session/` to `apps/web/src/listening-room/`,
+  `FloorSession.tsx`/`FloorSession` to `ListeningRoom.tsx`/`ListeningRoom`, and
+  the stylesheet to `listening-room.css`. Updated application/test imports and
+  current README documentation; older task entries retain their historical names.
+- Validation using installed dependencies: root TypeScript check passed; all 16
+  web tests passed; Vite production build passed. Web TypeScript check failed
+  with the existing TS2345 nullability error at `FloorItem.tsx:74` (file unchanged
+  by this rename). The standard web build includes that check and remains blocked.
+  Lambda checks were skipped because this change only renames frontend files.
+
+## 2026-11-12 01:20 UTC — Fix draggable item stage nullability
+
+- Changed the pointer-move handler in `FloorItem.tsx` to a local arrow function
+  created after the stage null guard, allowing TypeScript to retain the non-null
+  stage type inside the callback. Drag behavior and listener cleanup are unchanged.
+- Validation using installed dependencies: root and web TypeScript checks passed,
+  all 16 web tests passed, and the complete web build sequence (TypeScript followed
+  by Vite) passed. This resolves the blocker recorded in the rename entry above.
+- Reviewed README and repository instructions; no further documentation changes
+  were needed for this type-narrowing fix. Lambda checks were skipped as unaffected.
