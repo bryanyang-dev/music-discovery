@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { IngestionError } from "../../../../packages/shared/src/index.ts";
 
+import { sanitizeSpotifyResponse } from "./response-sanitization.ts";
+
 export const SPOTIFY_HTTP_POLICY = {
   requestTimeoutMs: 10_000,
   maxResponseBytes: 512_000,
@@ -29,6 +31,11 @@ export async function spotifyJson(
   const callId = randomUUID();
   const startedAt = performance.now();
   let httpStatus: number | null = null;
+  let responseDetails: Record<string, unknown> = {
+    response: null,
+    responseTruncated: false,
+  };
+  let httpFailure: IngestionError | undefined;
   function emit(
     level: "INFO" | "ERROR",
     event: "spotify_request" | "spotify_response",
@@ -67,14 +74,13 @@ export async function spotifyJson(
     });
     httpStatus = response.status;
     if (!response.ok) {
-      await response.body?.cancel();
       if (response.status === 401 || response.status === 403) {
-        throw new IngestionError("SPOTIFY_AUTH_ERROR");
+        httpFailure = new IngestionError("SPOTIFY_AUTH_ERROR");
+      } else if (response.status === 429) {
+        httpFailure = new IngestionError("SPOTIFY_RATE_LIMITED");
+      } else {
+        httpFailure = new IngestionError("SPOTIFY_REQUEST_FAILED");
       }
-      if (response.status === 429) {
-        throw new IngestionError("SPOTIFY_RATE_LIMITED");
-      }
-      throw new IngestionError("SPOTIFY_REQUEST_FAILED");
     }
     const reader = response.body?.getReader();
     if (!reader) {
@@ -101,16 +107,30 @@ export async function spotifyJson(
     }
     requestSignal.throwIfAborted();
     const result: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    try {
+      responseDetails = sanitizeSpotifyResponse(result, options.operation);
+    } catch {
+      responseDetails = {
+        response: "[response unavailable]",
+        responseTruncated: true,
+      };
+    }
+    if (httpFailure) {
+      throw httpFailure;
+    }
     emit("INFO", "spotify_response", {
       status: "succeeded",
       httpStatus,
       durationMs: performance.now() - startedAt,
+      ...responseDetails,
     });
     return result;
   } catch (error) {
     let failure: IngestionError;
     if (signal.aborted) {
       failure = new IngestionError("RUN_DEADLINE");
+    } else if (httpFailure) {
+      failure = httpFailure;
     } else if (error instanceof IngestionError) {
       failure = error;
     } else {
@@ -120,6 +140,7 @@ export async function spotifyJson(
       status: "failed",
       httpStatus,
       durationMs: performance.now() - startedAt,
+      ...responseDetails,
       code: failure.code,
     });
     throw failure;

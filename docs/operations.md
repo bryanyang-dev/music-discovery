@@ -48,9 +48,21 @@ correlate them with the invocation and editorial row. `operation` is `token` or
 response arrived); failures include a safe `code` at ERROR level. Success means
 the bounded HTTP body was read and parsed as JSON; later schema validation or
 matching can still fail the invocation. Logger failures do not alter HTTP results.
-Credentials, access tokens, URLs/query text, headers and request/response bodies
-are never logged. `SPOTIFY_AUTH_ERROR` includes denied application
-access (401/403); verify Spotify app access and credentials. On
+`spotify_response.response` contains the actual parsed catalog JSON filtered to
+public fields, including tracks, artists, albums, recording IDs and pagination.
+URL credentials are rejected and query strings/fragments are stripped. Unknown
+fields and arbitrary provider error text are excluded; JSON error responses retain
+public status fields. Token responses expose only `token_type: "Bearer"` and
+numeric `expires_in`, never the access token. Request bodies and headers are excluded.
+
+Response previews retain at most 10 items per array, 512 characters per string and
+8 nested levels; `responseTruncated` marks size/depth truncation. Previews over
+32,000 serialized UTF-8 bytes are replaced by an omission marker. The original
+response used for matching is unchanged. Missing, unreadable, oversized or non-JSON
+bodies log `response: null`; unsuccessful HTTP status codes keep their existing
+safe failure code even when their body cannot be read or parsed.
+`SPOTIFY_AUTH_ERROR` includes denied application access (401/403); verify Spotify
+app access and credentials. On
 `SPOTIFY_RATE_LIMITED`, retry later. Other network, HTTP and malformed-response
 failures use `SPOTIFY_REQUEST_FAILED`; oversized bodies use `RESPONSE_TOO_LARGE`.
 There are no in-process provider retries. Invocation retries/destinations remain

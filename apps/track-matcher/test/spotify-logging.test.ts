@@ -33,7 +33,7 @@ function assertPair(events: Record<string, unknown>[], status: string) {
   assert.ok(Number(response!.durationMs) >= 0);
 }
 
-test("every token request and search page has a correlated log pair without credentials or bodies", async () => {
+test("every token request and search page has a correlated log pair with sanitized responses", async () => {
   const state = capture();
   const clientId = "synthetic-client-id-marker";
   const clientSecret = "synthetic-client-secret-marker";

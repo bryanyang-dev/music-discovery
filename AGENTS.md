@@ -109,8 +109,9 @@ The goal is to become more effective at working in this repository with every co
   intentional non-track skips separately from extraction failures; writers, tags,
   tracklists and incidental song mentions do not establish credited recommendations.
 - Route Spotify token and catalog requests through `apps/track-matcher/src/spotify/http.ts`
-  so every call has paired logs. Log only explicit operational fields; never log
-  authorization headers, tokens, raw URLs/query text or request/response bodies.
+  so every call has paired logs. Log response contents through the Spotify response
+  sanitizer's public-field allowlist and size limits; exclude credentials, arbitrary
+  provider error text, authorization headers, raw URL query strings and request bodies.
 - Preserve primary failures when cleanup fails. Bound cleanup, make cancellation
   ownership explicit, and never expose secrets in logs or errors.
 - In `apps/web`, keep state and formatting logic in plain `.ts` modules tested from

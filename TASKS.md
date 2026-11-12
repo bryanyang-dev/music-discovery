@@ -1,5 +1,23 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 20:48 UTC — Include Spotify response contents in call logs
+
+- Added `response` and `responseTruncated` to Spotify response events. Catalog
+  JSON retains public recording, artist, album and pagination fields; URLs lose
+  credentials/query strings/fragments, and unknown fields and arbitrary provider
+  error text are excluded. Token responses expose only expiry/type metadata.
+- Bounded previews to 10 items per array, 512 characters per string, 8 nested
+  levels and 32,000 serialized UTF-8 bytes without modifying matching inputs.
+  Error bodies use the existing HTTP size/deadline limits; unreadable/invalid error
+  bodies preserve the HTTP failure code, with work cancellation taking precedence.
+- Updated operations, limits, repository map and agent guidance. Added regression
+  coverage for actual nested response data, token/URL/nested-secret filtering,
+  malformed errors, preview limits and HTTP failure preservation.
+- Validation: full offline suite (195 tests), typechecks, both Lambda builds and
+  six bundle tests passed; the final malformed-error adjustment also passed its
+  owning tests and typechecks. Formatting and diff checks passed. No install,
+  deployment, database writes or live Spotify calls were needed.
+
 ## 2026-11-12 20:20 UTC — Log every Spotify HTTP call
 
 - Added paired `spotify_request`/`spotify_response` JSON events for client-credentials

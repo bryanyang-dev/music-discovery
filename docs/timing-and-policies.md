@@ -92,7 +92,13 @@ time minus 18,250 ms, whichever is smaller. The reserve covers the database's
 15,000 ms operation timeout, 3,000 ms close and 250 ms logging/return budget.
 A 150-second console timeout accommodates the full work and cleanup budgets.
 Each Spotify request (including reading the body) has a 10,000 ms timeout and
-512,000 byte decompressed body cap in `spotify/http.ts`. A lookup makes one token
+512,000 byte decompressed body cap in `spotify/http.ts`, including error bodies
+read for response logging. HTTP error codes take precedence over body read/parse
+failures; cancellation of the work signal still produces `RUN_DEADLINE`.
+Response log previews have a separate 32,000-byte serialized UTF-8 cap, with
+10 items per array, 512 characters per string and 8 nesting levels, owned by
+`spotify/response-sanitization.ts`. These log limits do not change matching data.
+A lookup makes one token
 request and up to five search requests, ten results per page. The work signal
 also bounds database operations. Provider requests are not retried within an
 invocation. A deadline skips failure-diagnostic writes and still closes the
