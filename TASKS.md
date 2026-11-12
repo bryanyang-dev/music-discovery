@@ -1018,3 +1018,9 @@ This section is updated as each task progresses, including verification evidence
   `pnpm web:build` passed. The headless Chrome run passed with new checks: drop on
   the mat, move twice, a second floor tape clamped at the edge, return to box, load
   from the mat by drag and by click; no page errors.
+
+## 2026-11-12 01:20 UTC — Darken the headphones (PR #4 follow-up)
+
+- Changed the headphone cups from the mockups' pink to dark violet in both themes
+  (`--headphone-cup` in `floor-session.css`), by request. This departs from the
+  "C5 · Anime" mockups. Checked with day and night screenshots; `pnpm web:build` passed.

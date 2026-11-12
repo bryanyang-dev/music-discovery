@@ -55,7 +55,7 @@ body {
   --paper-text: #3b2f5b;
   --pill: #fffdf6;
 
-  --headphone-cup: linear-gradient(160deg, #ff9aa6 0 58%, #e8728a 58%);
+  --headphone-cup: linear-gradient(160deg, #5d4f85 0 58%, #3b2f5b 58%);
   --headphone-shine: #ffffff;
   --note-1: #e8728a;
   --note-2: #8fd3f4;
@@ -142,7 +142,7 @@ body {
   --paper-text: #2c2547;
   --pill: #2a2646;
 
-  --headphone-cup: linear-gradient(160deg, #c76a80 0 58%, #9c4c66 58%);
+  --headphone-cup: linear-gradient(160deg, #2a2646 0 58%, #1c1836 58%);
   --headphone-shine: rgba(255, 246, 214, 0.75);
   --note-1: #ffd98a;
   --note-2: #9fdcf5;
