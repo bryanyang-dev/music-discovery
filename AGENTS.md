@@ -6,6 +6,10 @@ These rules supplement inherited instructions, including the dependency-installa
 
 - Use a separate worktree and branch for each agent task. Preserve other tasks'
   checkouts and uncommitted work.
+- Create worktrees in visible sibling directories beside this repository so they
+  can be opened in VS Code. Never create them under `/private` or `/tmp` (which
+  resolves to `/private/tmp` on macOS). If sandbox permissions block the sibling
+  directory, request access rather than falling back to a temporary directory.
 - New worktrees have no `node_modules`. With install approval, run the full
   frozen-lockfile install before filtered `pnpm --filter ... add` commands, which
   set up only the filtered package and break cross-package imports in checks.
