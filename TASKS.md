@@ -1024,3 +1024,5 @@ This section is updated as each task progresses, including verification evidence
 - Changed the headphone cups from the mockups' pink to dark violet in both themes
   (`--headphone-cup` in `floor-session.css`), by request. This departs from the
   "C5 · Anime" mockups. Checked with day and night screenshots; `pnpm web:build` passed.
+- Follow-up: lightened the night-theme cups (`#5a5488` over `#453f6c`) so they stand
+  out from the dark floor; rechecked with a night screenshot and `pnpm web:build`.
