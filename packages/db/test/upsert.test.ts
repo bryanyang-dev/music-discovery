@@ -289,3 +289,34 @@ test("disabled sources are skipped; direct duplicate source URLs violate uniquen
   } finally { await state.cleanup(); }
 });
 
+
+
+test("Spotify matches persist independently, survive provider errors, and invalidate on identity edits", { skip: !connectionString }, async () => {
+  const state = await fixture();
+  try {
+    const source = await state.database.store.getSource(state.keys[0]!);
+    assert.ok(source);
+    const runId = await state.database.store.beginRun(source);
+    await state.database.store.upsertTrack(source, runId, article);
+    const [row] = await state.database.db.select().from(tracks).where(eq(tracks.sourceId, source.id));
+    assert.ok(row);
+    const target = await state.database.matching.getTrack(row.id);
+    assert.ok(target);
+    const match = { status: "matched" as const, providerTrackId: "1234567890123456789012",
+      providerUrl: "https://open.spotify.com/track/1234567890123456789012", providerTitle: article.trackTitle, providerArtists: article.artists };
+    await state.database.matching.saveMatch(target, match);
+    await state.database.matching.recordFailure(target, "SPOTIFY_RATE_LIMITED");
+    const [failed] = await state.database.db.select().from(trackStreamingMatches).where(eq(trackStreamingMatches.trackId, row.id));
+    assert.equal(failed?.matchStatus, "matched");
+    assert.equal(failed?.providerUrl, match.providerUrl);
+    assert.equal(failed?.lastErrorCode, "SPOTIFY_RATE_LIMITED");
+    assert.deepEqual(await state.database.matching.saveMatch(target, { status: "not_found" }), match);
+    await state.database.store.upsertTrack(source, runId, { ...article, summary: "New review summary" });
+    assert.equal((await state.database.db.select().from(trackStreamingMatches).where(eq(trackStreamingMatches.trackId, row.id))).length, 1);
+    await state.database.store.upsertTrack(source, runId, { ...article, trackTitle: "Changed title" });
+    assert.equal((await state.database.db.select().from(trackStreamingMatches).where(eq(trackStreamingMatches.trackId, row.id))).length, 0);
+    await assert.rejects(state.database.matching.saveMatch(target, match), /TRACK_CHANGED/);
+  } finally {
+    await state.cleanup();
+  }
+});

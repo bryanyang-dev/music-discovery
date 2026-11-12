@@ -66,3 +66,13 @@ export interface CacheValidators {
 export function emptyCounts(): RunCounts {
   return { found: 0, inserted: 0, updated: 0, unchanged: 0, rejected: 0 };
 }
+
+export interface MatchingTrack {
+  id: string;
+  trackTitle: string;
+  artists: string[];
+}
+
+export type SpotifyMatch =
+  | { status: "matched"; providerTrackId: string; providerUrl: string; providerTitle: string | null; providerArtists: string[] | null }
+  | { status: "not_found" | "ambiguous" };

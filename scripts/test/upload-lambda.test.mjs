@@ -8,12 +8,13 @@ import { test } from "node:test";
 function fixture(context, failure = "", session = "") {
   const root = mkdtempSync(join(tmpdir(), "lambda-upload-test-"));
   context.after(() => rmSync(root, { recursive: true, force: true }));
-  for (const directory of ["scripts", "bin", "dist/ingestion", "certs"]) {
+  for (const directory of ["scripts", "bin", "dist/ingestion", "dist/track-matcher", "certs"]) {
     mkdirSync(join(root, directory), { recursive: true });
   }
   const script = join(root, "scripts/upload-lambda.sh");
   copyFileSync(new URL("../upload-lambda.sh", import.meta.url), script);
   writeFileSync(join(root, "dist/ingestion/index.cjs"), "exports.handler = async () => ({});\n");
+  writeFileSync(join(root, "dist/track-matcher/index.cjs"), "exports.handler = async () => ({ provider: 'spotify' });\n");
   const certificatePath = join(root, "certs/prod-ca-2021.crt");
   copyFileSync(new URL("../../certs/prod-ca-2021.crt", import.meta.url), certificatePath);
   const trace = join(root, "trace.jsonl");
@@ -36,7 +37,7 @@ if ('${command}' === 'aws' && args[1] === 'get-function-configuration') {
 }
 if ('${command}' === 'aws' && args[1] === 'update-function-code') {
   const archive = args[args.indexOf('--zip-file') + 1].slice('fileb://'.length);
-  fs.appendFileSync(process.env.UPLOAD_TEST_TRACE, JSON.stringify({ archiveEntries: execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim(), certificate: execFileSync('unzip', ['-p', archive, 'prod-ca-2021.crt'], { encoding: 'utf8' }) }) + '\\n');
+  fs.appendFileSync(process.env.UPLOAD_TEST_TRACE, JSON.stringify({ bundle: execFileSync('unzip', ['-p', archive, 'index.cjs'], { encoding: 'utf8' }), archiveEntries: execFileSync('unzip', ['-Z1', archive], { encoding: 'utf8' }).trim(), certificate: execFileSync('unzip', ['-p', archive, 'prod-ca-2021.crt'], { encoding: 'utf8' }) }) + '\\n');
 }
 `);
     chmodSync(path, 0o755);
@@ -104,14 +105,16 @@ test("incomplete arguments and an incompatible function fail before uploading", 
   assert.equal(state.calls().length, 1);
 });
 
-test("no arguments selects musicRssFetcher in the verified account and region", (context) => {
-  const state = fixture(context);
-  const result = state.run([]);
-  assert.equal(result.status, 0, result.stderr);
-  for (const { args } of state.calls().filter((call) => call.command === "aws")) {
-    assert.equal(args[args.indexOf("--function-name") + 1], "arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher");
-    assert.equal(args[args.indexOf("--region") + 1], "us-east-2");
-    assert.equal(args[args.indexOf("--profile") + 1], "music-discovery");
+test("default and explicit ingestion selectors target musicRssFetcher in the verified account and region", (context) => {
+  for (const args of [[], ["--app", "ingestion"]]) {
+    const state = fixture(context);
+    const result = state.run(args);
+    assert.equal(result.status, 0, result.stderr);
+    for (const { args } of state.calls().filter((call) => call.command === "aws")) {
+      assert.equal(args[args.indexOf("--function-name") + 1], "arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher");
+      assert.equal(args[args.indexOf("--region") + 1], "us-east-2");
+      assert.equal(args[args.indexOf("--profile") + 1], "music-discovery");
+    }
   }
 });
 
@@ -178,4 +181,29 @@ test("a missing or empty CA certificate stops before building or contacting AWS"
     assert.match(result.stderr, /Missing or unreadable database CA certificate/);
     assert.deepEqual(state.calls(), []);
   }
+});
+
+
+test("matcher upload requires an explicit function and region before contacting AWS", (context) => {
+  const state = fixture(context);
+  const result = state.run(["--app", "track-matcher"]);
+  assert.equal(result.status, 1);
+  assert.deepEqual(state.calls(), []);
+});
+
+test("unknown applications fail before contacting AWS", (context) => {
+  const state = fixture(context);
+  assert.equal(state.run(["--app", "unknown", "matcher-test", "us-east-2"]).status, 1);
+  assert.deepEqual(state.calls(), []);
+});
+
+test("matcher upload packages the matcher bundle for the explicit function", (context) => {
+  const state = fixture(context);
+  const result = state.run(["--app", "track-matcher", "matcher-test", "us-east-2"]);
+  assert.equal(result.status, 0, result.stderr);
+  for (const { args } of state.calls().filter(call => call.command === "aws")) {
+    assert.equal(args[args.indexOf("--function-name") + 1], "matcher-test");
+  }
+  assert.match(state.calls().find(call => call.archiveEntries).bundle, /spotify/);
+  assert.match(result.stdout, /track-matcher function/);
 });

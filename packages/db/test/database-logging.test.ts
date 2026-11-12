@@ -159,3 +159,20 @@ test("unexpected response accessors cannot turn successful database work into a 
   assert.equal(records[1]?.response, "[response unavailable]");
   assert.doesNotMatch(JSON.stringify(records), /private getter details/);
 });
+
+
+test("Spotify result logs allow public recording fields while preserving redaction", async () => {
+  const { records, logCall } = fixture();
+  await logCall({ scope: "query", operation: "select_existing_spotify_match" }, async () => [{
+    matchStatus: "matched", providerTrackId: "1234567890123456789012", providerTitle: "Song",
+    providerArtists: ["Artist"], providerUrl: "https://open.spotify.com/track/1234567890123456789012?token=synthetic-secret-marker",
+    lastErrorCode: "synthetic-secret-marker", access_token: "synthetic-secret-marker",
+    clientSecret: "synthetic-secret-marker",
+  }]);
+  const response = records[1]?.response as Record<string, unknown>[];
+  assert.equal(response[0]?.matchStatus, "matched");
+  assert.deepEqual(response[0]?.providerArtists, ["Artist"]);
+  assert.equal(response[0]?.providerUrl, "https://open.spotify.com/track/1234567890123456789012");
+  assert.equal(response[0]?.lastErrorCode, "[redacted]");
+  assert.ok(!JSON.stringify(records).includes("synthetic-secret-marker"));
+});

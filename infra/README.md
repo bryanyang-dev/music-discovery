@@ -16,7 +16,7 @@ other live settings are not inferred from repository files. Credential rotation
 requires updating `DATABASE_URL` in the console and testing connectivity.
 The handler reads the environment; it does not fetch Secrets Manager values.
 
-`pnpm upload:lambda` updates code only, packaging `index.cjs` and the existing
+`pnpm upload:ingestion` updates ingestion code only, packaging `index.cjs` and the existing
 public CA certificate at the ZIP root. It preserves environment variables and
 other configuration. `pnpm build:lambda` builds locally without updating AWS.
 See [README](../README.md#deployment) for target/profile options and
@@ -24,6 +24,19 @@ See [README](../README.md#deployment) for target/profile options and
 
 There is no active CDK setup. The canceled CDK installation added no dependencies.
 Do not deploy infrastructure merely to upload code or change an environment value.
+
+## Separate console-created track matcher
+
+The matcher is managed in the Lambda console independently of ingestion. Its name
+and region must be explicitly supplied to `pnpm upload:matcher`; the command
+packages `dist/track-matcher/index.cjs` and the CA at the ZIP root. It updates code
+only. Configure its Spotify environment, timeout and database grants/RLS using
+[the matcher operations guide](../README.md#track-matcher-lambda). No matcher
+resources or ingestion-to-matcher trigger are defined by the retained template.
+
+Use `pnpm upload:lambda <ingestion-function> <matcher-function> <region> [aws-profile]`
+for both apps in sequence. Explicit targets are required; failure stops later
+uploads and does not roll back an earlier successful upload.
 
 ## Retained CloudFormation design: not deployed
 

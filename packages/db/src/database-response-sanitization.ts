@@ -9,13 +9,14 @@ export const DATABASE_RESPONSE_LOG_LIMITS = {
 
 const TEXT_FIELDS = [
   "id", "sourceId", "runId", "key", "name", "category", "trackTitle", "reviewTitle",
-  "reviewAuthor", "summary", "metadataHash", "releaseDate",
+  "reviewAuthor", "summary", "metadataHash", "releaseDate", "providerTrackId", "providerTitle",
 ] as const;
 const DATE_FIELDS = ["lastAttemptAt", "lastSuccessAt", "createdAt", "startedAt", "finishedAt",
-  "reviewPublishedAt", "firstSeenAt", "lastSeenAt", "updatedAt"] as const;
-const URL_FIELDS = ["feedUrl", "sourceUrl", "imageUrl"] as const;
+  "reviewPublishedAt", "firstSeenAt", "lastSeenAt", "updatedAt", "matchedAt"] as const;
+const URL_FIELDS = ["feedUrl", "sourceUrl", "imageUrl", "providerUrl"] as const;
 const COUNT_FIELDS = ["found", "inserted", "updated", "unchanged", "rejected"] as const;
 const RUN_STATUSES = new Set(["running", "succeeded", "partial_failure", "failed", "skipped"]);
+const MATCH_STATUSES = new Set(["pending", "matched", "not_found", "ambiguous"]);
 const WRITE_OUTCOMES = new Set(["inserted", "updated", "unchanged"]);
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -67,7 +68,7 @@ export function sanitizeDatabaseResponse(operation: string, result: unknown): Re
         output[key] = input[key] === null ? null : "[redacted]";
       }
     }
-    for (const key of ["artists", "genres", "labels"] as const) {
+    for (const key of ["artists", "genres", "labels", "providerArtists"] as const) {
       if (Array.isArray(input[key])) {
         output[key] = limitedItems(input[key]).filter(item => typeof item === "string").map(text);
       }
@@ -84,6 +85,21 @@ export function sanitizeDatabaseResponse(operation: string, result: unknown): Re
     }
     if (typeof input.status === "string" && RUN_STATUSES.has(input.status)) {
       output.status = input.status;
+    }
+    if (typeof input.matchStatus === "string" && MATCH_STATUSES.has(input.matchStatus)) {
+      output.matchStatus = input.matchStatus;
+    }
+    if (typeof input.status === "string" && MATCH_STATUSES.has(input.status)) {
+      output.status = input.status;
+    }
+    if (Object.hasOwn(input, "lastErrorCode")) {
+      if (input.lastErrorCode === null) {
+        output.lastErrorCode = null;
+      } else if (typeof input.lastErrorCode === "string" && Object.hasOwn(INGESTION_ERROR_MESSAGES, input.lastErrorCode)) {
+        output.lastErrorCode = input.lastErrorCode;
+      } else {
+        output.lastErrorCode = "[redacted]";
+      }
     }
     if (Array.isArray(input.errors)) {
       output.errors = limitedItems(input.errors).map(issue => {

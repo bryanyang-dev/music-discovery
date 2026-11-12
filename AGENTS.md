@@ -6,6 +6,10 @@ These rules supplement inherited instructions, including the dependency-installa
 
 - Use a separate worktree and branch for each agent task. Preserve other tasks'
   checkouts and uncommitted work.
+- Create worktrees in visible sibling directories beside this repository so they
+  can be opened in VS Code. Never create them under `/private` or `/tmp` (which
+  resolves to `/private/tmp` on macOS). If sandbox permissions block the sibling
+  directory, request access rather than falling back to a temporary directory.
 - New worktrees have no `node_modules`. With install approval, run the full
   frozen-lockfile install before filtered `pnpm --filter ... add` commands, which
   set up only the filtered package and break cross-package imports in checks.
@@ -38,8 +42,8 @@ These rules supplement inherited instructions, including the dependency-installa
 ## Deployment documentation
 
 - The existing Lambda is managed in the AWS console, including manually set
-  environment variables. `pnpm upload:lambda` updates code and the CA certificate
-  only; the retained CloudFormation template is undeployed, and CDK is not in use.
+  environment variables. `pnpm upload:ingestion` updates ingestion code and the CA
+  certificate only; the retained CloudFormation template is undeployed, and CDK is not in use.
 - Keep current operations distinct from proposed infrastructure and historical
   TASKS.md entries. Verify behavior against code before documenting it as active.
 
@@ -111,8 +115,10 @@ The goal is to become more effective at working in this repository with every co
   metadata hashing with the database merge logic; name public publisher APIs explicitly.
 - Keep streaming-provider matches separate from editorial track metadata and its
   hash. Provider recording IDs may be shared across review rows; matching does
-  not establish listener playback eligibility. Future writers must invalidate
-  matches on artist/title changes and preserve them on transient provider errors.
+  not establish listener playback eligibility. Writers must lock the editorial
+  track before saving matches or changing its identity, reject stale artist/title
+  lookup results, invalidate all provider rows on identity changes, and preserve
+  matches on transient provider errors.
 - Evaluate new publisher feeds as posts before assuming one track per item. Treat
   intentional non-track skips separately from extraction failures; writers, tags,
   tracklists and incidental song mentions do not establish credited recommendations.

@@ -1,5 +1,12 @@
 // Messages are fixed application text; never interpolate URLs, SQL or driver messages.
 export const INGESTION_ERROR_MESSAGES = {
+  INVALID_TRACK_ID: "The event must include a valid trackId UUID.",
+  TRACK_NOT_FOUND: "The requested track does not exist.",
+  TRACK_CHANGED: "The track title or artists changed during matching; retry with current metadata.",
+  SPOTIFY_CONFIG_INVALID: "Configure SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET and a two-letter SPOTIFY_MARKET.",
+  SPOTIFY_AUTH_ERROR: "Spotify rejected the application credentials or access token.",
+  SPOTIFY_RATE_LIMITED: "Spotify rate limited the request; retry later.",
+  SPOTIFY_REQUEST_FAILED: "The Spotify request failed or returned an invalid response.",
   UNSAFE_URL: "The URL is not allowed by the selected source policy or contains credentials.",
   HTTP_ERROR: "The source returned an unsuccessful HTTP response.",
   NETWORK_ERROR: "The request to the source failed due to a network error.",

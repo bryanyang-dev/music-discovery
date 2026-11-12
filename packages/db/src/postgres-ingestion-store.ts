@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import { IngestionError, MAX_RUN_ERROR_COUNT, type IngestionStore, type SourceRecord } from "@music-discovery/shared";
-import { ingestionRuns, ingestionSources, tracks } from "./schema.ts";
-import { mergeTrack, metadataHash } from "./merge.ts";
+import { ingestionRuns, ingestionSources, tracks, trackStreamingMatches } from "./schema.ts";
+import { mergeTrack, metadataHash, sameTrackIdentity } from "./merge.ts";
 import type { InTransaction, Transaction } from "./client.ts";
 import type { QueryExecutor } from "./database-logging.ts";
 
@@ -84,13 +84,17 @@ export function createPostgresIngestionStore(inTransaction: InTransaction): Inge
           throw new IngestionError("DATABASE_ERROR");
         }
         const [previous] = await query("select_existing_track", transaction.select().from(tracks)
-          .where(and(eq(tracks.sourceId, source.id), eq(tracks.sourceUrl, incoming.sourceUrl))));
+          .where(and(eq(tracks.sourceId, source.id), eq(tracks.sourceUrl, incoming.sourceUrl))).for("update"));
         const merged = mergeTrack(incoming, previous);
         const hash = metadataHash(merged);
         if (previous?.metadataHash === hash) {
           await query("refresh_track_last_seen", transaction.update(tracks)
             .set({ lastSeenAt: sql`clock_timestamp()` }).where(eq(tracks.id, previous.id)));
           return "unchanged";
+        }
+        if (previous && !sameTrackIdentity(previous, merged)) {
+          await query("invalidate_streaming_matches", transaction.delete(trackStreamingMatches)
+            .where(eq(trackStreamingMatches.trackId, previous.id)));
         }
         await query("upsert_track", transaction.insert(tracks).values({ ...merged, sourceId: source.id, metadataHash: hash })
           .onConflictDoUpdate({

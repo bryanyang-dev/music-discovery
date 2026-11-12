@@ -1,10 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -eq 0 ]]; then
+application="ingestion"
+if [[ "${1:-}" == "--app" ]]; then
+  application="${2:-}"
+  if [[ "$application" != "ingestion" && "$application" != "track-matcher" ]]; then
+    echo "Unknown Lambda application; choose ingestion or track-matcher." >&2
+    exit 1
+  fi
+  shift 2
+fi
+
+if [[ $# -eq 0 && "$application" == "ingestion" ]]; then
   set -- "arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher" "us-east-2" "music-discovery"
 elif [[ $# -lt 2 || $# -gt 3 ]]; then
-  echo "Usage: pnpm upload:lambda [<function-name> <region> [aws-profile]]" >&2
+  echo "Usage: bash scripts/upload-lambda.sh [--app ingestion|track-matcher] [<function-name> <region> [aws-profile]]" >&2
   exit 1
 fi
 
@@ -61,7 +71,7 @@ pnpm test
 pnpm test:bundle
 
 # A fresh archive prevents stale files from previous builds being uploaded.
-packageDirectory="$(mktemp -d "$repositoryRoot/dist/ingestion/upload.XXXXXX")"
+packageDirectory="$(mktemp -d "$repositoryRoot/dist/$application/upload.XXXXXX")"
 archivePath="$packageDirectory/handler.zip"
 cleanup() {
   local primaryExitCode=$?
@@ -74,7 +84,7 @@ cleanup() {
   return "$cleanupExitCode"
 }
 trap cleanup EXIT
-zip -j "$archivePath" dist/ingestion/index.cjs "$certificatePath"
+zip -j "$archivePath" "dist/$application/index.cjs" "$certificatePath"
 
 echo "Uploading handler to $functionName in $region..."
 # Reject the update if another deployment changed the function during our build.
@@ -86,4 +96,4 @@ aws lambda update-function-code \
 
 aws lambda wait function-updated-v2 \
   --function-name "$functionName" "${awsOptions[@]}"
-echo "Upload completed. Test the function in the Lambda console with a registered sourceKey (see README)."
+echo "Upload completed. Test the $application function in the Lambda console (see README)."
