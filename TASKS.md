@@ -1,5 +1,21 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 20:11 UTC — Share a writable parent for task worktrees
+
+- Place new task worktrees in `../music-discovery-worktrees/<task-name>` and
+  preserve existing worktrees. Configure the parent once rather than granting
+  each task directory or expanding access to the entire home directory.
+- Updated the personal worktree workflow and local Codex configuration with the
+  dedicated parent. These personal settings live outside the repository; the PR
+  records the repository convention. Managed hosts may override local settings,
+  and this running session retains its original effective writable roots.
+- Retained separate Git metadata, dependency installation, service, migration and
+  deployment approval requirements. No dependencies were installed.
+- Validation: Codex TOML parsing, review of skill reference links, Prettier checks
+  for changed repository Markdown, and `git diff --check` passed. The bundled
+  skill validator could not run because Python PyYAML is unavailable; no install
+  was attempted. Runtime checks were skipped for these documentation-only changes.
+
 ## 2026-11-12 19:43 UTC — Type the Lambda handler parameters directly
 
 - Applied `IngestionEvent` and `TrackMatcherEvent` directly to their handler event

@@ -6,10 +6,17 @@ These rules supplement inherited instructions, including the dependency-installa
 
 - Use a separate worktree and branch for each agent task. Preserve other tasks'
   checkouts and uncommitted work.
-- Create worktrees in visible sibling directories beside this repository so they
-  can be opened in VS Code. Never create them under `/private` or `/tmp` (which
-  resolves to `/private/tmp` on macOS). If sandbox permissions block the sibling
-  directory, request access rather than falling back to a temporary directory.
+- Create new worktrees under the visible sibling parent
+  `/Users/bryanyang/music-discovery-worktrees/<task-name>` so they can be opened in VS Code.
+  Preserve existing worktrees in their current locations. Never create them under
+  `/private` or `/tmp` (which resolves to `/private/tmp` on macOS).
+- Grant the worktree parent as an additional writable root in the agent host
+  before starting tasks. Codex uses `sandbox_workspace_write.writable_roots` in
+  `~/.codex/config.toml` or CLI `--add-dir`; managed hosts may override this.
+  Verify the effective roots in a new session. If access is missing, request it
+  for the parent rather than repeatedly escalating individual edits or falling
+  back to a temporary directory. Git metadata may still need separate approval;
+  dependency, service, migration and deployment approvals remain required.
 - New worktrees have no `node_modules`. With install approval, run the full
   frozen-lockfile install before filtered `pnpm --filter ... add` commands, which
   set up only the filtered package and break cross-package imports in checks.
