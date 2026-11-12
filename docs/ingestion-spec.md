@@ -59,10 +59,13 @@ canonical alias merging is implemented.
 
 ### Streaming match schema
 
-Migration `0001_track_streaming_matches.sql` is additive and has not been applied
-as part of this change. It introduces `track_streaming_matches` with RLS and no
-grants/policies. Initial migration history remains unchanged. Database integration
-tests require a disposable database with both migrations already applied.
+Migration `0001_track_streaming_matches.sql` is additive and was applied to the
+configured Supabase database with explicit authorization on 2026-11-12. Read-only
+verification confirmed its journal hash, all 15 columns, primary/foreign keys,
+four validated check constraints, RLS enabled and no access policies. The new table
+was empty. No new grants/policies were added. Initial migration history remains
+unchanged. Database integration tests still require a disposable database with
+both migrations already applied; those tests were not run against Supabase.
 
 Each row belongs to an existing editorial `tracks` row. The composite primary key
 `(track_id, provider)` allows one selected recording per service. `provider` is a

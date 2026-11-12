@@ -1,5 +1,22 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 05:15 UTC — Apply streaming match migration to Supabase
+
+- User explicitly authorized migration of the reviewed schema. Preflight used a
+  read-only transaction to confirm that runtime/migration connection targets agreed,
+  the new table was absent, and the sole journal entry matched the SHA-256 hash of
+  `0000_initial.sql`. Applied pending `0001_track_streaming_matches.sql` using the
+  existing Drizzle migration configuration, `DATABASE_MIGRATION_URL` from the local
+  environment file, and the bundled CA certificate with verified TLS.
+- Read-only postflight confirmed exactly two journal entries and the new migration
+  hash `8553891565dd106b806a45c071e453adc6ced24992bbca8e4fbd3b07e29b281f`,
+  all 15 expected columns, the composite primary key, track foreign key, all four
+  validated checks, RLS enabled, zero policies and zero match rows. No audio matching,
+  grants, playback service, or Lambda deployment was performed. PR remains unmerged.
+- Updated current README/specification to distinguish the applied Supabase state
+  from other databases. PostgreSQL catalog verification passed; disposable-database
+  integration tests remain unrun. No application code or migration files changed.
+
 ## 2026-11-12 05:08 UTC — Add streaming provider match schema
 
 - Added RLS-enabled `track_streaming_matches` with primary key `(track_id,
