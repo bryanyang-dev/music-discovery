@@ -1,28 +1,55 @@
 # Pitchfork ingestion — implementation work log
 
-## 2026-11-12 20:02 UTC — Persist ingestion track activity counts
+## 2026-11-12 20:56 UTC — Log exact Spotify catalog query parameters
 
-- Confirmed `not_modified` records HTTP 304, independently of database changes.
-  Refreshing a track's `last_seen_at` already returns `unchanged` metadata.
-- Added explicit `seen` (valid extracted tracks) and `existing` (committed updated
-  plus unchanged rows) totals to run results/logs. Finalization persists these and
-  existing found/inserted/updated/unchanged/rejected totals atomically with run and
-  source state, including failures. Seen tracks can include a failed database
-  write; committed insert/existing counts do not.
-- Added migration `0002_ingestion_run_counts.sql` and its snapshot. Counters are
-  nullable so historical and unfinalized runs remain unknown rather than falsely
-  zero. Apply the migration before deploying the updated ingestion code. No
-  historical backfill, remote migration or deployment was performed.
-- Made concurrent first sightings report only the transaction that actually
-  inserted the source/URL as new; a conflicting insertion reloads and locks the
-  existing row before metadata merging and classification.
-- Updated ingestion/operations guidance, diagnostic SQL and AGENTS.md semantics.
-  Added mixed/new/existing, 304, failed-write, logging and migration regressions,
-  plus database persistence/concurrency cases.
-- Validation: approved frozen-lockfile install (60 packages reused, none downloaded),
-  typechecking, 186 offline tests, six Lambda bundle tests, formatting and
-  `git diff --check` passed. All 11 database integration tests skipped because
-  `TEST_DATABASE_URL` is not configured in this worktree.
+- Added `queryParams` to catalog `spotify_request` events, read directly from the
+  outgoing URL. The complete decoded `q`, `type`, `market`, `limit` and `offset`
+  values are logged without truncation for each page, including failed requests.
+  Other parameters, token endpoint queries, credentials and headers stay excluded.
+- Updated the operations guide with a request-log example and refined Spotify
+  agent guidance to distinguish public search parameters from secret query fields.
+- Added regression coverage comparing logs with actual outgoing URLs, including
+  query normalization, Unicode, reserved characters, pagination, provider failure
+  and exclusion of credentials/unknown parameters/token endpoint queries.
+- Validation: all 197 offline tests, typechecks, both Lambda builds, six bundle
+  tests, formatting and diff checks passed. No installation, deployment, live
+  Spotify requests or database writes were needed.
+
+## 2026-11-12 20:48 UTC — Include Spotify response contents in call logs
+
+- Added `response` and `responseTruncated` to Spotify response events. Catalog
+  JSON retains public recording, artist, album and pagination fields; URLs lose
+  credentials/query strings/fragments, and unknown fields and arbitrary provider
+  error text are excluded. Token responses expose only expiry/type metadata.
+- Bounded previews to 10 items per array, 512 characters per string, 8 nested
+  levels and 32,000 serialized UTF-8 bytes without modifying matching inputs.
+  Error bodies use the existing HTTP size/deadline limits; unreadable/invalid error
+  bodies preserve the HTTP failure code, with work cancellation taking precedence.
+- Updated operations, limits, repository map and agent guidance. Added regression
+  coverage for actual nested response data, token/URL/nested-secret filtering,
+  malformed errors, preview limits and HTTP failure preservation.
+- Validation: full offline suite (195 tests), typechecks, both Lambda builds and
+  six bundle tests passed; the final malformed-error adjustment also passed its
+  owning tests and typechecks. Formatting and diff checks passed. No install,
+  deployment, database writes or live Spotify calls were needed.
+
+## 2026-11-12 20:20 UTC — Log every Spotify HTTP call
+
+- Added paired `spotify_request`/`spotify_response` JSON events for client-credentials
+  requests and every catalog search page, with unique call IDs, invocation request
+  IDs, editorial track IDs, operation/offset, duration, HTTP status and safe failure codes.
+- Kept credentials, headers, URLs/query text and raw bodies out of logs. Logging
+  failures preserve HTTP results; HTTP success records JSON parsing, with later
+  response-shape validation still owned by the search workflow.
+- Added coverage for pagination, handler correlation, redaction, HTTP/network/body/
+  JSON/size failures, cancellation, timeout policy and throwing loggers. Updated
+  the README, operations guide and agent guidance.
+- Validation: typechecks, full offline suite, both Lambda builds and six bundle
+  tests passed. No live Spotify calls, database writes or deployment occurred.
+- The first `pnpm format` unexpectedly attempted an automatic install before approval;
+  DNS failed and the process was stopped. The subsequently approved frozen-lockfile
+  install reused cached packages with zero downloads. Documented pnpm's automatic
+  installation behavior so future empty-worktree script runs require approval first.
 
 ## 2026-11-12 19:43 UTC — Type the Lambda handler parameters directly
 

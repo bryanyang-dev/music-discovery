@@ -170,3 +170,56 @@ test("failure to persist a result fails invocation and still closes", async () =
   );
   assert.equal(state.closed, 1);
 });
+
+test("default Spotify lookup uses the invocation logger and request ID for every call", async (t) => {
+  const state = fixture();
+  const messages: Record<string, unknown>[] = [];
+  const environment = { ...process.env };
+  t.after(() => {
+    for (const key of [
+      "SPOTIFY_CLIENT_ID",
+      "SPOTIFY_CLIENT_SECRET",
+      "SPOTIFY_MARKET",
+    ]) {
+      if (environment[key] === undefined) delete process.env[key];
+      else process.env[key] = environment[key];
+    }
+  });
+  process.env.SPOTIFY_CLIENT_ID = "synthetic-client";
+  process.env.SPOTIFY_CLIENT_SECRET = "synthetic-secret-marker";
+  process.env.SPOTIFY_MARKET = "US";
+  const responses = [
+    Response.json({ access_token: "synthetic-access-token" }),
+    Response.json({ tracks: { items: [], next: null } }),
+  ];
+  t.mock.method(globalThis, "fetch", async () => {
+    const response = responses.shift();
+    assert.ok(response);
+    return response;
+  });
+  const { lookup: _lookup, ...dependencies } = state.dependencies;
+  await createHandler({
+    ...dependencies,
+    logger: {
+      log(message: string) {
+        messages.push(JSON.parse(message));
+      },
+      error() {
+        assert.fail("unexpected failure");
+      },
+    },
+  })({ trackId: track.id }, {
+    awsRequestId: "invocation-id",
+    getRemainingTimeInMillis: () => 90_000,
+  } as Context);
+  const calls = messages.filter((entry) =>
+    String(entry.event).startsWith("spotify_"),
+  );
+  assert.equal(calls.length, 4);
+  assert.ok(
+    calls.every(
+      (entry) =>
+        entry.requestId === "invocation-id" && entry.trackId === track.id,
+    ),
+  );
+});

@@ -3,7 +3,7 @@ import {
   type MatchingTrack,
   type SpotifyMatch,
 } from "../../../../packages/shared/src/index.ts";
-import { spotifyJson } from "./http.ts";
+import { spotifyJson, type SpotifyLoggingOptions } from "./http.ts";
 
 interface SpotifyConfiguration {
   clientId: string;
@@ -52,6 +52,7 @@ export async function searchSpotify(
   configuration: SpotifyConfiguration,
   signal: AbortSignal,
   fetcher: typeof fetch = fetch,
+  logging: SpotifyLoggingOptions = {},
 ): Promise<SpotifyMatch> {
   if (
     !configuration.clientId.trim() ||
@@ -72,6 +73,7 @@ export async function searchSpotify(
       body: "grant_type=client_credentials",
     },
     signal,
+    { ...logging, operation: "token", trackId: track.id },
   )) as { access_token?: unknown } | null;
   if (
     !tokenData ||
@@ -106,6 +108,12 @@ export async function searchSpotify(
         headers: { Authorization: `Bearer ${tokenData.access_token}` },
       },
       signal,
+      {
+        ...logging,
+        operation: "search",
+        trackId: track.id,
+        offset: page * SEARCH_RESULT_LIMIT,
+      },
     )) as { tracks?: { items?: unknown; next?: unknown } } | null;
     if (
       !data?.tracks ||

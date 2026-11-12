@@ -1,9 +1,23 @@
+import { randomUUID } from "node:crypto";
 import { IngestionError } from "../../../../packages/shared/src/index.ts";
+
+import { sanitizeSpotifyResponse } from "./response-sanitization.ts";
 
 export const SPOTIFY_HTTP_POLICY = {
   requestTimeoutMs: 10_000,
   maxResponseBytes: 512_000,
 } as const;
+
+export interface SpotifyLoggingOptions {
+  logger?: Pick<Console, "log" | "error">;
+  requestId?: string | null;
+}
+
+interface SpotifyCallOptions extends SpotifyLoggingOptions {
+  operation: "token" | "search";
+  trackId: string;
+  offset?: number;
+}
 
 // All callers supply fixed Spotify endpoints. Redirects cannot forward credentials elsewhere.
 export async function spotifyJson(
@@ -11,7 +25,52 @@ export async function spotifyJson(
   url: string,
   init: RequestInit,
   signal: AbortSignal,
+  options: SpotifyCallOptions,
 ): Promise<unknown> {
+  const logger = options.logger ?? console;
+  const callId = randomUUID();
+  const startedAt = performance.now();
+  let httpStatus: number | null = null;
+  let responseDetails: Record<string, unknown> = {
+    response: null,
+    responseTruncated: false,
+  };
+  let httpFailure: IngestionError | undefined;
+  function emit(
+    level: "INFO" | "ERROR",
+    event: "spotify_request" | "spotify_response",
+    details: Record<string, unknown>,
+  ) {
+    try {
+      const requestDetails: Record<string, unknown> = {};
+      if (event === "spotify_request" && options.operation === "search") {
+        requestDetails.queryParams = Object.fromEntries(
+          [...new URL(url).searchParams].filter(([key]) =>
+            ["q", "type", "market", "limit", "offset"].includes(key),
+          ),
+        );
+      }
+      const message = JSON.stringify({
+        event,
+        level,
+        requestId: options.requestId ?? null,
+        trackId: options.trackId,
+        callId,
+        operation: options.operation,
+        ...(options.offset === undefined ? {} : { offset: options.offset }),
+        ...requestDetails,
+        ...details,
+      });
+      if (level === "ERROR") {
+        logger.error(message);
+      } else {
+        logger.log(message);
+      }
+    } catch {
+      // Logging must not change request results or expose raw provider data.
+    }
+  }
+  emit("INFO", "spotify_request", {});
   const requestSignal = AbortSignal.any([
     signal,
     AbortSignal.timeout(SPOTIFY_HTTP_POLICY.requestTimeoutMs),
@@ -22,15 +81,15 @@ export async function spotifyJson(
       signal: requestSignal,
       redirect: "error",
     });
+    httpStatus = response.status;
     if (!response.ok) {
-      await response.body?.cancel();
       if (response.status === 401 || response.status === 403) {
-        throw new IngestionError("SPOTIFY_AUTH_ERROR");
+        httpFailure = new IngestionError("SPOTIFY_AUTH_ERROR");
+      } else if (response.status === 429) {
+        httpFailure = new IngestionError("SPOTIFY_RATE_LIMITED");
+      } else {
+        httpFailure = new IngestionError("SPOTIFY_REQUEST_FAILED");
       }
-      if (response.status === 429) {
-        throw new IngestionError("SPOTIFY_RATE_LIMITED");
-      }
-      throw new IngestionError("SPOTIFY_REQUEST_FAILED");
     }
     const reader = response.body?.getReader();
     if (!reader) {
@@ -56,10 +115,43 @@ export async function spotifyJson(
       }
     }
     requestSignal.throwIfAborted();
-    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as unknown;
+    const result: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    try {
+      responseDetails = sanitizeSpotifyResponse(result, options.operation);
+    } catch {
+      responseDetails = {
+        response: "[response unavailable]",
+        responseTruncated: true,
+      };
+    }
+    if (httpFailure) {
+      throw httpFailure;
+    }
+    emit("INFO", "spotify_response", {
+      status: "succeeded",
+      httpStatus,
+      durationMs: performance.now() - startedAt,
+      ...responseDetails,
+    });
+    return result;
   } catch (error) {
-    if (signal.aborted) throw new IngestionError("RUN_DEADLINE");
-    if (error instanceof IngestionError) throw error;
-    throw new IngestionError("SPOTIFY_REQUEST_FAILED");
+    let failure: IngestionError;
+    if (signal.aborted) {
+      failure = new IngestionError("RUN_DEADLINE");
+    } else if (httpFailure) {
+      failure = httpFailure;
+    } else if (error instanceof IngestionError) {
+      failure = error;
+    } else {
+      failure = new IngestionError("SPOTIFY_REQUEST_FAILED");
+    }
+    emit("ERROR", "spotify_response", {
+      status: "failed",
+      httpStatus,
+      durationMs: performance.now() - startedAt,
+      ...responseDetails,
+      code: failure.code,
+    });
+    throw failure;
   }
 }

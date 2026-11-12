@@ -67,6 +67,8 @@ export function createHandler(dependencies: Dependencies = {}) {
                   market: process.env.SPOTIFY_MARKET ?? "",
                 },
                 signal,
+                fetch,
+                { logger, requestId },
               ),
         signal,
       );

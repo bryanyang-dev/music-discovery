@@ -26,7 +26,8 @@ apps/track-matcher/                    Independent Lambda app, built/tested with
     run.ts                            Metadata lookup, Spotify search and match persistence
     timing.ts                         Matcher work and cleanup budgets
     spotify/search.ts                 Client credentials, catalog search and exact matching
-    spotify/http.ts                   Bounded Spotify HTTP and sanitized failures
+    spotify/http.ts                   Bounded Spotify HTTP, paired call logs and sanitized failures
+    spotify/response-sanitization.ts  Public response fields, redaction and log size limits
   test/                               Handler, Spotify and bundle tests
 apps/web/
   index.html                          Vite HTML entry
