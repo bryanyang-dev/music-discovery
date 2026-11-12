@@ -38,6 +38,8 @@ const DATE_FIELDS = [
 const URL_FIELDS = ["feedUrl", "sourceUrl", "imageUrl", "providerUrl"] as const;
 const COUNT_FIELDS = [
   "found",
+  "seen",
+  "existing",
   "inserted",
   "updated",
   "unchanged",

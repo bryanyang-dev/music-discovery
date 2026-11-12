@@ -10,6 +10,16 @@ import {
 } from "../src/schema.ts";
 import { connectDatabase } from "../src/index.ts";
 
+const runCounterNames = [
+  "found",
+  "seen",
+  "inserted",
+  "existing",
+  "updated",
+  "unchanged",
+  "rejected",
+];
+
 test("all tables enable RLS and track identity is enforced per source", () => {
   for (const table of [
     ingestionSources,
@@ -107,7 +117,7 @@ test("streaming migration is additive, enables RLS, and preserves snapshot histo
       "utf8",
     ),
   );
-  assert.equal(journal.entries.length, 2);
+  assert.ok(journal.entries.length >= 2);
   const entry = journal.entries[1];
   const migration = await readFile(
     new URL(`../migrations/${entry.tag}.sql`, import.meta.url),
@@ -148,7 +158,12 @@ test("streaming migration is additive, enables RLS, and preserves snapshot histo
     const config = getTableConfig(table);
     assert.deepEqual(
       Object.keys(snapshot.tables[`public.${config.name}`].columns).sort(),
-      config.columns.map((column) => column.name).sort(),
+      config.columns
+        .map((column) => column.name)
+        .filter(
+          (name) => table !== ingestionRuns || !runCounterNames.includes(name),
+        )
+        .sort(),
     );
   }
   for (const name of Object.keys(initial.tables)) {
@@ -164,7 +179,7 @@ test("TLS bypass is restricted to explicitly flagged loopback test connections",
   );
 });
 
-test("initial SQL and snapshot match the schema without leases or persisted run counters", async () => {
+test("initial SQL and snapshot preserve the original schema without run counters", async () => {
   const migration = await readFile(
     new URL("../migrations/0000_initial.sql", import.meta.url),
     "utf8",
@@ -178,7 +193,12 @@ test("initial SQL and snapshot match the schema without leases or persisted run 
   assert.equal(snapshot.prevId, "00000000-0000-0000-0000-000000000000");
   for (const table of [ingestionSources, ingestionRuns, tracks]) {
     const config = getTableConfig(table);
-    const expectedColumns = config.columns.map((column) => column.name).sort();
+    const expectedColumns = config.columns
+      .map((column) => column.name)
+      .filter(
+        (name) => table !== ingestionRuns || !runCounterNames.includes(name),
+      )
+      .sort();
     assert.deepEqual(
       Object.keys(snapshot.tables["public." + config.name].columns).sort(),
       expectedColumns,
@@ -195,5 +215,40 @@ test("initial SQL and snapshot match the schema without leases or persisted run 
   assert.doesNotMatch(
     migration,
     /"(?:lease_token|lease_expires_at|found|inserted|updated|unchanged|rejected)"/,
+  );
+});
+
+test("run counters are additive and leave historical counts unknown", async () => {
+  const migration = await readFile(
+    new URL("../migrations/0002_ingestion_run_counts.sql", import.meta.url),
+    "utf8",
+  );
+  for (const name of runCounterNames) {
+    assert.ok(migration.includes(`ADD COLUMN "${name}" integer`));
+    const column = getTableConfig(ingestionRuns).columns.find(
+      (column) => column.name === name,
+    )!;
+    assert.equal(column.notNull, false);
+    assert.equal(column.hasDefault, false);
+  }
+  assert.doesNotMatch(migration, /\b(?:DROP|UPDATE|DEFAULT)\b|NOT NULL/i);
+  const previous = JSON.parse(
+    await readFile(
+      new URL("../migrations/meta/0001_snapshot.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const latest = JSON.parse(
+    await readFile(
+      new URL("../migrations/meta/0002_snapshot.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  assert.equal(latest.prevId, previous.id);
+  assert.deepEqual(
+    Object.keys(latest.tables["public.ingestion_runs"].columns).sort(),
+    getTableConfig(ingestionRuns)
+      .columns.map((column) => column.name)
+      .sort(),
   );
 });

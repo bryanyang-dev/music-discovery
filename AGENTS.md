@@ -124,6 +124,9 @@ The goal is to become more effective at working in this repository with every co
 - Evaluate new publisher feeds as posts before assuming one track per item. Treat
   intentional non-track skips separately from extraction failures; writers, tags,
   tracklists and incidental song mentions do not establish credited recommendations.
+- Keep ingestion `not_modified` tied to HTTP 304. Use run counters for track
+  activity; refreshing `last_seen_at` alone is unchanged metadata. Preserve NULL
+  counts for historical or unfinalized runs rather than inventing zeros.
 - Preserve primary failures when cleanup fails. Bound cleanup, make cancellation
   ownership explicit, and never expose secrets in logs or errors.
 - In `apps/web`, keep state and formatting logic in plain `.ts` modules tested from
