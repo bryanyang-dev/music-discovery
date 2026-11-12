@@ -1,5 +1,7 @@
 # Music discovery
 
+<img width="1469" height="834" alt="ListeningRoomDark" src="https://github.com/user-attachments/assets/bd8dd343-2890-41ea-aa4a-1598e4ba3086" />
+
 A TypeScript AWS Lambda fetches a selected registered RSS source, enriches entries from
 review pages, logs parsed metadata, and upserts tracks into Supabase alongside
 source/run records. Results report inserted, updated, unchanged and rejected counts.
