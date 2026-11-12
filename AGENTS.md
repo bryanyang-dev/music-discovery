@@ -2,6 +2,15 @@
 
 These rules supplement inherited instructions, including the dependency-installation policy.
 
+## Agent worktrees and human review
+
+- Use a separate worktree and branch for each agent task. Preserve other tasks'
+  checkouts and uncommitted work.
+- Open a PR against `main` for human review; address feedback on the same task
+  branch. Leave merging to the human unless explicitly instructed otherwise.
+- Clean up task resources only after verifying the PR is merged and that no
+  uncommitted work or later commits would be lost.
+
 ## Commit messages
 
 - Use Conventional Commits: `<type>[optional scope][!]: <description>`.
