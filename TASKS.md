@@ -1,5 +1,41 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 05:35 UTC — Add independent Spotify track matcher Lambda
+
+- Added `apps/track-matcher` alongside ingestion, using root TypeScript/test/build
+  tooling and existing dependencies. Its `index.handler` accepts one persisted
+  track UUID, loads editorial metadata, searches Spotify with client credentials
+  and an explicit market, and saves a public recording URL in streaming matches.
+- Matching requires normalized exact title and full credited-artist equality.
+  Distinct qualifying IDs or incomplete searches are ambiguous; cap search at five
+  pages of ten. Provider HTTP has per-request 10-second and 512,000-byte limits,
+  no redirects/retries, fixed endpoints and sanitized errors. Work is capped at
+  120 seconds with 18.25 seconds reserved for database termination/close and return.
+- Added a matching-store contract and bounded/logged PostgreSQL implementation.
+  Match writes lock and recheck editorial identity; confirmed/manual matches
+  survive repeated lookup and transient provider errors. Ingestion locks the same
+  row and invalidates all provider rows on title/artist changes within its upsert
+  transaction. Review-only changes preserve matches. Refined AGENTS.md with this
+  cross-writer locking requirement.
+- Added `build:ingestion`, `build:matcher` and `upload:matcher`; `build:lambda` and
+  bundle smoke tests now cover both apps. Existing ingestion upload defaults are
+  retained; matcher uploads require explicit function/region and use its own
+  bundle. Neither upload command changes console settings.
+- Updated README, operations, timing, schema contract, infrastructure status and
+  environment examples with invocation, credentials, matching limits, permissions
+  and release guidance. Ingestion now needs provider-row DELETE grants/RLS;
+  matcher needs track SELECT and streaming-match SELECT/INSERT/UPDATE access.
+- Validation: approved `pnpm install --frozen-lockfile --ignore-scripts` reused all
+  locked dependencies with zero downloads. `pnpm typecheck`, `pnpm test` (143
+  application tests plus 33 script/infrastructure tests), `pnpm test:bundle` (6
+  smoke tests) and `git diff --check` passed. Added PostgreSQL integration coverage
+  for match persistence, error preservation and identity invalidation but did not
+  execute it: no authorized disposable database was supplied. SQL-building unit
+  tests cover locking, stale writes, confirmed-match preservation and invalidation.
+- No AWS upload/configuration, grants/policies, migration, live Spotify request or
+  hosted database write was performed. Live provider/app access remains unverified;
+  there is no ingestion-to-matcher trigger, scheduling, backfill or playback yet.
+
 ## 2026-11-12 05:15 UTC — Apply streaming match migration to Supabase
 
 - User explicitly authorized migration of the reviewed schema. Preflight used a

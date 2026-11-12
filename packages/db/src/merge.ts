@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { TrackInput } from "@music-discovery/shared";
+import type { MatchingTrack, TrackInput } from "@music-discovery/shared";
 
 export function mergeTrack(incoming: TrackInput, previous?: TrackInput): TrackInput {
   return {
@@ -22,5 +22,10 @@ export function metadataHash(track: TrackInput): string {
     track.reviewAuthor, track.reviewPublishedAt?.toISOString() ?? null,
     track.summary, track.imageUrl, track.genres, track.labels, track.releaseDate,
   ])).digest("hex");
+}
+
+
+export function sameTrackIdentity(left: Pick<MatchingTrack, "trackTitle" | "artists">, right: Pick<MatchingTrack, "trackTitle" | "artists">): boolean {
+  return left.trackTitle === right.trackTitle && JSON.stringify(left.artists) === JSON.stringify(right.artists);
 }
 

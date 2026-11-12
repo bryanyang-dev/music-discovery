@@ -11,8 +11,9 @@ or failed runs clear them. Hosted track-upsert integration remains unverified.
 Hourly polling requires a separately configured console trigger. No
 CDK/CloudFormation stack manages the existing function.
 See [operations](operations.md) and [infrastructure status](../infra/README.md).
-The frontend is a listening-room prototype; there is no public API, playback,
-recording matching or historical backfill.
+The frontend is a listening-room prototype; there is no public API, playback or
+historical backfill. Spotify recording matching is a separate Lambda app; see
+[the matcher contract](../README.md#track-matcher-lambda).
 
 ## Discovery and extraction
 
@@ -92,15 +93,18 @@ means the provider has not been scheduled/attempted. Creating a pending row is
 optional until a matching workflow exists. SQL checks enforce state consistency;
 future provider adapters must validate provider-specific identifiers and HTTPS URLs.
 
-Future matching writers must retain successful matches on transient failures,
-update attempt/error fields independently, clear an old error on successful lookup,
-and invalidate matches when credited artists or song title change (not when only
-review metadata changes). These workflows and automatic invalidation are not
-implemented by this schema change; existing ingestion does not read/write this table.
+The Spotify matching store retains successful matches on transient failures,
+updates attempt/error fields independently and clears an old error on successful
+lookup. Matcher writes lock the editorial track and reject changes to its title or
+credited artists since lookup began. Ingestion locks the same track and deletes
+all provider rows in its upsert transaction when title or artists change; review
+metadata changes preserve them. New providers must follow this locking contract.
+See [the matcher contract](../README.md#track-matcher-lambda) for search limits,
+invocation shape, errors and required permissions.
 Keep provider data outside the editorial metadata hash. Store no audio, temporary
 stream URLs, credentials, or global `is_playable` flag. Resolve playback availability
 for the listener and market when playback is requested; a match is not a guarantee
-of streaming access. RLS grants/policies require deliberate setup before a future
+of streaming access. RLS grants/policies require deliberate setup before a
 backend role uses the table; public clients get no access from this migration.
 
 ### Ingestion writes

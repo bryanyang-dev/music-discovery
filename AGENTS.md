@@ -111,8 +111,10 @@ The goal is to become more effective at working in this repository with every co
   metadata hashing with the database merge logic; name public publisher APIs explicitly.
 - Keep streaming-provider matches separate from editorial track metadata and its
   hash. Provider recording IDs may be shared across review rows; matching does
-  not establish listener playback eligibility. Future writers must invalidate
-  matches on artist/title changes and preserve them on transient provider errors.
+  not establish listener playback eligibility. Writers must lock the editorial
+  track before saving matches or changing its identity, reject stale artist/title
+  lookup results, invalidate all provider rows on identity changes, and preserve
+  matches on transient provider errors.
 - Evaluate new publisher feeds as posts before assuming one track per item. Treat
   intentional non-track skips separately from extraction failures; writers, tags,
   tracklists and incidental song mentions do not establish credited recommendations.

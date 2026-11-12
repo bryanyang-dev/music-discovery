@@ -6,7 +6,7 @@ Every day, a new cassette tape is created with a selection of songs sourced from
 
 ## Project structure
 
-This pnpm workspace separates the ingestion application, web frontend, storage
+This pnpm workspace separates ingestion, track matching, the web frontend, storage
 contract, PostgreSQL implementation and publisher HTTP/parsing code. Key files:
 
 ```text
@@ -20,6 +20,14 @@ apps/ingestion/
     source-registration.ts            Registration argument validation and lifecycle
     timing.ts                         Overall work and cleanup budgets
   test/                               Handler, workflow, timing and bundle tests
+apps/track-matcher/                    Independent Lambda app, built/tested with root tooling
+  src/
+    handler.ts                        Track-ID invocation and connection lifecycle
+    run.ts                            Metadata lookup, Spotify search and match persistence
+    timing.ts                         Matcher work and cleanup budgets
+    spotify/search.ts                 Client credentials, catalog search and exact matching
+    spotify/http.ts                   Bounded Spotify HTTP and sanitized failures
+  test/                               Handler, Spotify and bundle tests
 apps/web/
   index.html                          Vite HTML entry
   vite.config.ts                      Vite and React plugin configuration
@@ -44,6 +52,7 @@ packages/
   shared/
     src/
       ingestion-store.interface.ts    IngestionStore behavioral contract only
+      track-matching-store.interface.ts  Provider match storage contract
       source-registry.interface.ts    Source registration contract
       source-validation.ts            Source key/configuration validation
       models.ts                       Feed, track, source and run data shapes
@@ -55,6 +64,7 @@ packages/
     src/
       client.ts                       Connections, bounded transactions and shutdown
       postgres-ingestion-store.ts     PostgreSQL implementation of IngestionStore
+      postgres-track-matching-store.ts  Locked Spotify match writes and attempt diagnostics
       postgres-source-registry.ts     Insert-only source registration
       schema.ts                       Drizzle tables and constraints
       merge.ts                        Metadata merging and SHA-256 hashing
@@ -183,10 +193,72 @@ variables, change other settings, publish versions, or invoke the function.
 Local `.env` values are not uploaded. Test with a registered `sourceKey` in the console afterward, for example
 `{"sourceKey":"pitchfork_best_new_tracks"}`.
 
-`pnpm build:lambda` only writes `dist/ingestion/index.cjs` locally. For a manual
+`pnpm build:lambda` builds both `dist/ingestion/index.cjs` and
+`dist/track-matcher/index.cjs` locally. `pnpm build:ingestion` and
+`pnpm build:matcher` build just the selected app. For a manual
 ZIP upload, include `certs/prod-ca-2021.crt` beside it. No `node_modules` is needed.
 The upload task requires installed AWS CLI, pnpm and zip, plus
 `lambda:GetFunctionConfiguration` and `lambda:UpdateFunctionCode`. A missing/empty CA stops the task before AWS calls.
+
+## Track matcher Lambda
+
+The separately console-created track matcher uses the same Node.js 24 ZIP layout
+and `index.handler` export as ingestion. Its function name/region are supplied
+explicitly; the repository does not infer its live settings. Maintain its runtime,
+role, networking, triggers and environment in the AWS console. Set:
+
+- `DATABASE_URL` and `NODE_EXTRA_CA_CERTS=/var/task/prod-ca-2021.crt` as above.
+- `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` from your Spotify developer app.
+- `SPOTIFY_MARKET`, a two-letter uppercase market such as `US`.
+- Timeout: 150 seconds recommended (120 seconds work plus 18.25 seconds cleanup).
+
+Invoke it with a persisted editorial track UUID:
+
+```json
+{ "trackId": "00000000-0000-4000-8000-000000000001" }
+```
+
+The UUID must identify an actual `tracks` row. Artist/title fields supplied in the
+event are ignored. The result includes `trackId`, `provider: "spotify"`, and
+`status` (`matched`, `not_found`, or `ambiguous`). A matched result also contains
+`providerTrackId`, canonical public `providerUrl`, `providerTitle` and
+`providerArtists` (stored attribution may be null for an existing manual match).
+No playback token or audio URL is returned.
+
+The matcher uses Spotify's [client credentials flow](https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow)
+and [catalog search](https://developer.spotify.com/documentation/web-api/reference/search).
+It compares Unicode-normalized, case-insensitive titles and complete artist sets,
+collapsing whitespace. Punctuation, accents and version suffixes remain meaningful.
+It does not choose the first search hit or infer featured-artist credits. Distinct
+qualifying provider IDs are ambiguous, including album/single duplicates. Search
+is capped at five pages of ten results; an incomplete search is also ambiguous.
+These conservative rules can leave valid recordings unresolved.
+
+Successful lookups save `matched`, `not_found` or `ambiguous` in
+`track_streaming_matches`. Established matches (including manual matches) are
+preserved by repeated automatic lookups. Provider failures throw safe error codes
+and update attempt/error fields without replacing a confirmed recording. A work
+deadline skips diagnostic writes; failed diagnostic writes preserve the primary
+error. Track identity changes during lookup reject the stale write. Ingestion
+invalidates all provider rows when title or credited artists change, while review
+metadata changes preserve them. This requires DELETE access/RLS on provider rows
+for the ingestion database role, in addition to existing permissions. The matcher
+role needs SELECT on tracks and SELECT/INSERT/UPDATE on streaming matches, with
+suitable RLS policies. No grants, policies or migrations are applied by this change.
+
+```sh
+pnpm build:matcher
+# After authorizing an upload, specify the console-created function and region:
+pnpm upload:matcher <function-name> <region> [aws-profile]
+```
+
+The upload runs the same checks and packages the selected app's bundle and CA.
+It changes code only; it does not set Spotify credentials, create triggers or invoke
+Lambda. Existing `pnpm upload:lambda` still targets ingestion by default. The matcher
+requires outbound HTTPS to `accounts.spotify.com`, `api.spotify.com` and database
+access. There is no automatic ingestion-to-matcher trigger or backfill yet. This
+implementation has offline coverage; live Spotify access and hosted writes remain
+unverified with your credentials.
 
 ## Development
 
@@ -206,7 +278,7 @@ and `esbuild`; pnpm 12 fails installs that would skip any other package's script
 | `pnpm web:dev`        | Start the Vite dev server for `apps/web`                                                                        |
 | `pnpm web:build`      | Typecheck and build `apps/web` into `apps/web/dist`                                                             |
 | `pnpm test`           | Offline application, template and mocked-upload tests                                                           |
-| `pnpm test:bundle`    | Build and smoke-test the Lambda bundle                                                                          |
+| `pnpm test:bundle`    | Build and smoke-test both Lambda bundles                                                                          |
 | `pnpm test:db`        | PostgreSQL integration tests; requires a pre-migrated disposable `TEST_DATABASE_URL`                            |
 | `pnpm db:generate`    | Generate migrations locally                                                                                     |
 | `pnpm db:migrate`     | Apply migrations using `DATABASE_MIGRATION_URL`; explicit authorization required                                |
@@ -262,8 +334,9 @@ recording. The existing `tracks` identity and ingestion behavior are unchanged.
 
 The table stores durable provider identifiers, public attribution links, optional
 recording/uploader metadata, and matching status. It stores neither audio nor stream
-URLs, tokens, or listener playback eligibility. Matching/search, backfill and playback
-are not implemented. Migration `0001` was applied to the configured Supabase database
+URLs, tokens, or listener playback eligibility. The track matcher above implements
+Spotify search and persistence; automatic scheduling, backfill and playback are
+not implemented. Migration `0001` was applied to the configured Supabase database
 with explicit authorization on 2026-11-12; its journal hash, columns, constraints and
 RLS state were verified with read-only queries. Other databases still require an
 explicitly authorized migration. It adds no grants or access policies. See the

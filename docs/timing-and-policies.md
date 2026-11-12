@@ -84,3 +84,17 @@ Relevant checks are `apps/ingestion/test/timing.test.ts`,
 `packages/db/test/deadline.test.ts` and `packages/rss/test/policy.test.ts`.
 The timing test compares against the **undeployed template's** 300 s timeout;
 it does not verify the live console setting.
+
+
+## Track matcher budgets
+
+`apps/track-matcher/src/timing.ts` caps work at 120,000 ms or Lambda's remaining
+time minus 18,250 ms, whichever is smaller. The reserve covers the database's
+15,000 ms operation timeout, 3,000 ms close and 250 ms logging/return budget.
+A 150-second console timeout accommodates the full work and cleanup budgets.
+Each Spotify request (including reading the body) has a 10,000 ms timeout and
+512,000 byte decompressed body cap in `spotify/http.ts`. A lookup makes one token
+request and up to five search requests, ten results per page. The work signal
+also bounds database operations. Provider requests are not retried within an
+invocation. A deadline skips failure-diagnostic writes and still closes the
+connection; attempt logging must never extend work into the cleanup reserve.

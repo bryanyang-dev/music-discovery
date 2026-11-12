@@ -25,6 +25,15 @@ See [README](../README.md#deployment) for target/profile options and
 There is no active CDK setup. The canceled CDK installation added no dependencies.
 Do not deploy infrastructure merely to upload code or change an environment value.
 
+## Separate console-created track matcher
+
+The matcher is managed in the Lambda console independently of ingestion. Its name
+and region must be explicitly supplied to `pnpm upload:matcher`; the command
+packages `dist/track-matcher/index.cjs` and the CA at the ZIP root. It updates code
+only. Configure its Spotify environment, timeout and database grants/RLS using
+[the matcher operations guide](../README.md#track-matcher-lambda). No matcher
+resources or ingestion-to-matcher trigger are defined by the retained template.
+
 ## Retained CloudFormation design: not deployed
 
 `ingestion.template.json` and `test/ingestion.test.mjs` are retained for a possible

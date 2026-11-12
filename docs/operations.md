@@ -1,4 +1,4 @@
-# Ingestion operations
+# Lambda operations
 
 ## Configuration and releases
 
@@ -24,6 +24,35 @@ started. Use AWS CLI 2.32.0 or newer for `aws login`.
 CloudFormation/CDK do not manage this function. The
 [retained template](../infra/README.md) does not establish live schedules, queues,
 alarms, retention or concurrency. Check those settings in the console as needed.
+
+## Track matcher operations
+
+The console-created track matcher is a separate deployment. Use
+`pnpm upload:matcher <function-name> <region> [aws-profile]` only for an authorized
+release, with Node.js 24 and `index.handler` configured in that function. Both
+upload commands run the full offline checks and bundle smoke tests, then package
+only the selected app. See [matcher configuration and payload](../README.md#track-matcher-lambda)
+for Spotify variables, timeout, database permissions and example invocation.
+The matcher is invoked directly with one `trackId`; ingestion does not invoke it.
+
+`track_matching_completed` logs `requestId`, `trackId` and the persisted status;
+`track_matching_failed` logs only `requestId` and a safe code. Database calls use
+the same paired logs described below. Credentials, access tokens and raw provider
+error bodies are never logged. `SPOTIFY_AUTH_ERROR` includes denied application
+access (401/403); verify Spotify app access and credentials. On
+`SPOTIFY_RATE_LIMITED`, retry later. Other network, HTTP and malformed-response
+failures use `SPOTIFY_REQUEST_FAILED`; oversized bodies use `RESPONSE_TOO_LARGE`.
+There are no in-process provider retries. Invocation retries/destinations remain
+console settings; unresolved results return normally rather than triggering retries.
+
+`TRACK_NOT_FOUND` means no matching editorial row exists. `TRACK_CHANGED` means
+metadata changed during lookup; retry against current metadata. Provider failures
+preserve prior matches and record safe attempt diagnostics when time permits.
+A database deadline can prevent diagnostics from being saved. Persistence or close
+failure fails the invocation. An ingestion role without DELETE/RLS access on
+`track_streaming_matches` will fail identity-changing upserts; provision that access
+before releasing the updated ingestion bundle. Live Spotify/hosted matcher writes
+have not been verified by offline tests.
 
 ## Source selection and registration
 
@@ -91,7 +120,8 @@ completion event. A worker killed before finalization can leave a `running` row.
 ## Database request and response logs
 
 Database logging is enabled by default for application storage APIs: source lookup,
-registration, run tracking and track upserts, including live preview source reads.
+registration, run tracking, track upserts and matcher reads/writes, including live
+preview source reads.
 Each transaction, application SQL statement (including timeout setup), normal close
 and forced termination emits `database_request` followed by `database_response`.
 Driver-managed BEGIN/COMMIT/ROLLBACK are covered by the transaction pair. Direct
