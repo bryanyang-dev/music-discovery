@@ -257,6 +257,31 @@ body {
   font-family: inherit;
 }
 
+/* Every object on the mat can be dragged; text selection would fight that. */
+.floor-stage {
+  user-select: none;
+}
+
+/* A zero-size anchor at the artboard origin: children keep their artboard positions and move with it. */
+.floor-item {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  cursor: grab;
+  touch-action: none;
+}
+
+.floor-item--dragging {
+  z-index: 1;
+}
+
+.floor-item--dragging,
+.floor-item--dragging * {
+  cursor: grabbing;
+}
+
 .floor-stage :focus-visible {
   outline: 3px solid #c8324d;
   outline-offset: 3px;
@@ -353,6 +378,7 @@ body {
     rgba(255, 207, 138, 0) 70%
   );
   animation: glow 5s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .headlight-sweep {
@@ -837,6 +863,7 @@ body {
 .sparkle {
   position: absolute;
   fill: var(--sparkle);
+  pointer-events: none;
 }
 
 .sparkle--player { left: 652px; top: 322px; animation: twinkle 2.6s ease-in-out infinite; }

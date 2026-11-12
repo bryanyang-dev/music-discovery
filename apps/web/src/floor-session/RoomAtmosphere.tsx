@@ -5,7 +5,7 @@ function range(count: number): number[] {
   return Array.from({ length: count }, (_, index) => index);
 }
 
-/** Tatami borders plus the room's light: sun, leaf shadows and dust by day; moon, lamp glow and headlights at night. */
+/** Tatami borders plus the room's light: sun, leaf shadows and dust by day; moon and headlights at night. */
 export function RoomAtmosphere() {
   return (
     <div aria-hidden="true">
@@ -35,7 +35,6 @@ export function RoomAtmosphere() {
         ))}
       </div>
       <div className="night-only">
-        <div className="lamp-glow" />
         <div className="headlight-sweep" />
       </div>
     </div>

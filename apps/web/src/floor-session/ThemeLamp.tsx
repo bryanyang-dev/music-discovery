@@ -5,12 +5,15 @@ interface ThemeLampProps {
   readonly onToggleTheme: () => void;
 }
 
-/** The paper lamp is the theme switch: unlit by day, lit at night. */
+/** The paper lamp is the theme switch: unlit by day, lit (with its glow on the floor) at night. */
 export function ThemeLamp({ theme, onToggleTheme }: ThemeLampProps) {
   const otherTheme: FloorTheme = theme === "day" ? "night" : "day";
 
   return (
     <>
+      <div className="night-only" aria-hidden="true">
+        <div className="lamp-glow" />
+      </div>
       <button
         type="button"
         className="theme-lamp"

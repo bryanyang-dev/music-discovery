@@ -4,6 +4,13 @@ import { useLayoutEffect, useState, type RefObject } from "react";
 export const stageWidthPx = 1440;
 export const stageHeightPx = 900;
 
+/** Converts a viewport point to artboard pixels, whatever the stage's current scale. */
+export function toStagePoint(stage: HTMLElement, clientX: number, clientY: number): { x: number; y: number } {
+  const stageRect = stage.getBoundingClientRect();
+  const scale = stageRect.width / stageWidthPx;
+  return { x: (clientX - stageRect.left) / scale, y: (clientY - stageRect.top) / scale };
+}
+
 function fitScale(container: HTMLElement): number {
   return Math.min(container.clientWidth / stageWidthPx, container.clientHeight / stageHeightPx);
 }

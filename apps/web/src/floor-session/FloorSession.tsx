@@ -1,6 +1,7 @@
 import { useCallback, useReducer, useRef } from "react";
 import { CassettePlayer } from "./CassettePlayer.tsx";
-import { IcedTea, SleepingCat, Sparkles } from "./FloorDecor.tsx";
+import { IcedTea, SleepingCat, Sparkle } from "./FloorDecor.tsx";
+import { FloorItem } from "./FloorItem.tsx";
 import { FloorTape, floorCassetteHalfSizePx } from "./FloorTape.tsx";
 import { Headphones } from "./Headphones.tsx";
 import { JCard } from "./JCard.tsx";
@@ -75,36 +76,55 @@ export function FloorSession({ theme, onToggleTheme, today }: FloorSessionProps)
           <h1 className="visually-hidden">Daily Mixtape</h1>
 
           <RoomAtmosphere />
-          <ThemeLamp theme={theme} onToggleTheme={onToggleTheme} />
-          <Headphones playing={session.playing} />
 
-          <CassettePlayer
-            ref={playerRef}
-            tape={loadedTape}
-            trackIndex={session.trackIndex}
-            playing={session.playing}
-            onTogglePlayback={() => dispatch({ type: "togglePlayback" })}
-            onNextTrack={() => dispatch({ type: "nextTrack" })}
-            onPreviousTrack={() => dispatch({ type: "previousTrack" })}
-            onStop={() => dispatch({ type: "stop" })}
-            onEject={() => dispatch({ type: "ejectTape" })}
-          />
-          <Sparkles />
+          <FloorItem stageRef={stageRef} dragHandle="anywhere">
+            <ThemeLamp theme={theme} onToggleTheme={onToggleTheme} />
+          </FloorItem>
+          <FloorItem stageRef={stageRef}>
+            <Headphones playing={session.playing} />
+          </FloorItem>
 
-          {loadedTape ? <JCard tape={loadedTape} trackIndex={session.trackIndex} /> : null}
+          <FloorItem stageRef={stageRef}>
+            <CassettePlayer
+              ref={playerRef}
+              tape={loadedTape}
+              trackIndex={session.trackIndex}
+              playing={session.playing}
+              onTogglePlayback={() => dispatch({ type: "togglePlayback" })}
+              onNextTrack={() => dispatch({ type: "nextTrack" })}
+              onPreviousTrack={() => dispatch({ type: "previousTrack" })}
+              onStop={() => dispatch({ type: "stop" })}
+              onEject={() => dispatch({ type: "ejectTape" })}
+            />
+            <Sparkle owner="player" />
+          </FloorItem>
 
-          <TapeBox
-            ref={boxRef}
-            tapes={session.tapes}
-            loadedTapeDate={session.loadedTapeDate}
-            floorTapeDates={floorTapeDates}
-            draggingTapeDate={drag?.tapeDate ?? null}
-            getTapeHandlers={(tapeDate) => getTapeHandlers(tapeDate, "box")}
-          />
-          <div className="floor-pill floor-hint">Drop a tape on the player to load it</div>
+          {/* Stays mounted while the player is empty so the card reappears where it was left. */}
+          <FloorItem stageRef={stageRef}>
+            {loadedTape ? <JCard tape={loadedTape} trackIndex={session.trackIndex} /> : null}
+          </FloorItem>
 
-          <IcedTea />
-          <SleepingCat />
+          <FloorItem stageRef={stageRef}>
+            <TapeBox
+              ref={boxRef}
+              tapes={session.tapes}
+              loadedTapeDate={session.loadedTapeDate}
+              floorTapeDates={floorTapeDates}
+              draggingTapeDate={drag?.tapeDate ?? null}
+              getTapeHandlers={(tapeDate) => getTapeHandlers(tapeDate, "box")}
+            />
+            <Sparkle owner="box" />
+          </FloorItem>
+          <FloorItem stageRef={stageRef}>
+            <div className="floor-pill floor-hint">Drop a tape on the player to load it</div>
+          </FloorItem>
+
+          <FloorItem stageRef={stageRef}>
+            <IcedTea />
+          </FloorItem>
+          <FloorItem stageRef={stageRef}>
+            <SleepingCat />
+          </FloorItem>
 
           {session.tapes.map((tape) => {
             const center = session.floorTapes[tape.date];

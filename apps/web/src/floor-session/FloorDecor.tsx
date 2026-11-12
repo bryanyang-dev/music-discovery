@@ -10,16 +10,17 @@ export function IcedTea() {
   );
 }
 
-export function Sparkles() {
+interface SparkleProps {
+  /** Which object the glint belongs to; it moves with that object. */
+  readonly owner: "player" | "box";
+}
+
+export function Sparkle({ owner }: SparkleProps) {
+  const sizePx = owner === "player" ? 30 : 18;
   return (
-    <div aria-hidden="true">
-      <svg className="sparkle sparkle--player" width="30" height="30" viewBox="0 0 20 20">
-        <path d={sparklePath} />
-      </svg>
-      <svg className="sparkle sparkle--box" width="18" height="18" viewBox="0 0 20 20">
-        <path d={sparklePath} />
-      </svg>
-    </div>
+    <svg className={`sparkle sparkle--${owner}`} width={sizePx} height={sizePx} viewBox="0 0 20 20" aria-hidden="true">
+      <path d={sparklePath} />
+    </svg>
   );
 }
 

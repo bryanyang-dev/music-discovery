@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent, type RefObject } from "react";
 import type { FloorPosition } from "./models.ts";
-import { stageWidthPx } from "./use-stage-scale.ts";
+import { stageWidthPx, toStagePoint } from "./use-stage-scale.ts";
 
 /** Pointer travel before a press on a tape becomes a drag instead of a click. */
 const dragStartThresholdPx = 4;
@@ -78,21 +78,12 @@ export function useTapeDrag({
     return stage.getBoundingClientRect().width / stageWidthPx;
   }
 
-  function toStagePoint(clientX: number, clientY: number): FloorPosition | null {
+  function tapeCenter(press: PendingPress, clientX: number, clientY: number): FloorPosition | null {
     const stage = stageRef.current;
     if (!stage) {
       return null;
     }
-    const stageRect = stage.getBoundingClientRect();
-    const scale = stageScale(stage);
-    return { x: (clientX - stageRect.left) / scale, y: (clientY - stageRect.top) / scale };
-  }
-
-  function tapeCenter(press: PendingPress, clientX: number, clientY: number): FloorPosition | null {
-    const point = toStagePoint(clientX, clientY);
-    if (!point) {
-      return null;
-    }
+    const point = toStagePoint(stage, clientX, clientY);
     return { x: point.x - press.gripOffset.x, y: point.y - press.gripOffset.y };
   }
 
