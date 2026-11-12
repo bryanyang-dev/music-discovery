@@ -13,6 +13,7 @@ function fixture(context, failure = "", session = "") {
   }
   const script = join(root, "scripts/upload-lambda.sh");
   copyFileSync(new URL("../upload-lambda.sh", import.meta.url), script);
+  copyFileSync(new URL("../lambda-targets.sh", import.meta.url), join(root, "scripts/lambda-targets.sh"));
   writeFileSync(join(root, "dist/ingestion/index.cjs"), "exports.handler = async () => ({});\n");
   writeFileSync(join(root, "dist/track-matcher/index.cjs"), "exports.handler = async () => ({ provider: 'spotify' });\n");
   const certificatePath = join(root, "certs/prod-ca-2021.crt");
@@ -184,11 +185,16 @@ test("a missing or empty CA certificate stops before building or contacting AWS"
 });
 
 
-test("matcher upload requires an explicit function and region before contacting AWS", (context) => {
+test("matcher upload defaults to trackMatcher in the shared account, region and profile", (context) => {
   const state = fixture(context);
   const result = state.run(["--app", "track-matcher"]);
-  assert.equal(result.status, 1);
-  assert.deepEqual(state.calls(), []);
+  assert.equal(result.status, 0, result.stderr);
+  for (const { args } of state.calls().filter(call => call.command === "aws")) {
+    assert.equal(args[args.indexOf("--function-name") + 1], "arn:aws:lambda:us-east-2:783161622181:function:trackMatcher");
+    assert.equal(args[args.indexOf("--region") + 1], "us-east-2");
+    assert.equal(args[args.indexOf("--profile") + 1], "music-discovery");
+  }
+  assert.match(state.calls().find(call => call.archiveEntries).bundle, /spotify/);
 });
 
 test("unknown applications fail before contacting AWS", (context) => {

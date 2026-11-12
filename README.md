@@ -182,7 +182,11 @@ pnpm upload:ingestion musicRssFetcher us-east-2 music-discovery
 
 The default target is
 `arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher`, using the local
-`music-discovery` AWS profile. If the initial AWS check reports an expired session,
+`music-discovery` AWS profile. All upload defaults are maintained in
+[`scripts/lambda-targets.sh`](scripts/lambda-targets.sh), including the matcher
+target `trackMatcher` in the same account and region. Update that file when a
+console-managed function is renamed or replaced; it contains no credentials and
+does not provision AWS resources. If the initial AWS check reports an expired session,
 the script runs `aws login` with the same region/profile and retries that check once.
 Complete the browser sign-in when prompted. Failed login, repeated expiry and other
 AWS errors stop the upload before building; valid sessions do not trigger login.
@@ -248,7 +252,9 @@ suitable RLS policies. No grants, policies or migrations are applied by this cha
 
 ```sh
 pnpm build:matcher
-# After authorizing an upload, specify the console-created function and region:
+# After authorizing an upload, use the configured trackMatcher target:
+pnpm upload:matcher
+# Or override the target/region/profile:
 pnpm upload:matcher <function-name> <region> [aws-profile]
 ```
 
@@ -264,14 +270,15 @@ unverified with your credentials.
 ## Uploading both Lambdas
 
 `pnpm upload:lambda` uploads both applications, ingestion first and matcher second.
-Both function names and their shared region are required; the AWS profile is optional:
+With no arguments it uses the shared defaults above. To override them, supply both
+function names and their shared region; the AWS profile is optional:
 
 ```sh
 pnpm upload:lambda <ingestion-function> <matcher-function> <region> [aws-profile]
 ```
 
-There is no default target for the combined command. It reuses each individual
-upload's validation, checks, packaging and revision protection. If an upload fails,
+It reuses each individual upload's validation, checks, packaging and revision
+protection. If an upload fails,
 the command stops; a successful earlier upload remains deployed. This is a
 sequential release, with no rollback. Configure each function in the console
 before authorizing uploads. Use `upload:ingestion` or `upload:matcher` to release

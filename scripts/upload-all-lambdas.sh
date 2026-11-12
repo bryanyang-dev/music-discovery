@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+repositoryRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$repositoryRoot/scripts/lambda-targets.sh"
+
+if [[ $# -eq 0 ]]; then
+  set -- "$ingestionFunction" "$matcherFunction" "$lambdaRegion" "$lambdaProfile"
+fi
+
 if [[ $# -lt 3 || $# -gt 4 ]]; then
-  echo "Usage: pnpm upload:lambda <ingestion-function> <matcher-function> <region> [aws-profile]" >&2
+  echo "Usage: pnpm upload:lambda [<ingestion-function> <matcher-function> <region> [aws-profile]]" >&2
   exit 1
 fi
 
@@ -14,7 +21,6 @@ fi
 ingestionFunction="$1"
 matcherFunction="$2"
 shift 2
-repositoryRoot="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Reuse each app's validation, packaging and revision-protected upload.
 # Stop on failure; successful earlier uploads are not rolled back.
