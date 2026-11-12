@@ -109,6 +109,10 @@ The goal is to become more effective at working in this repository with every co
 - Keep publisher constants, URL policies, feed parsing and review extraction under
   `packages/rss/src/publishers/<publisher>/`. Keep `shared` publisher-neutral and
   metadata hashing with the database merge logic; name public publisher APIs explicitly.
+- Keep streaming-provider matches separate from editorial track metadata and its
+  hash. Provider recording IDs may be shared across review rows; matching does
+  not establish listener playback eligibility. Future writers must invalidate
+  matches on artist/title changes and preserve them on transient provider errors.
 - Evaluate new publisher feeds as posts before assuming one track per item. Treat
   intentional non-track skips separately from extraction failures; writers, tags,
   tracklists and incidental song mentions do not establish credited recommendations.
@@ -120,5 +124,7 @@ The goal is to become more effective at working in this repository with every co
 - Keep changes focused. Add regression tests for affected boundaries and failure paths;
   verify typechecking and relevant tests, plus the Lambda bundle when affected.
 - Report skipped checks and blockers honestly; record significant changes in `TASKS.md`.
+- Redaction tests must assert against their complete synthetic secret markers,
+  not the word `private`, which also appears in macOS `/private/tmp` worktree paths.
 - Never install dependencies, apply remote migrations, or deploy infrastructure without
   the required explicit authorization. Keep credentials and generated builds out of Git.

@@ -251,6 +251,25 @@ seven days. Run it with `pnpm web:dev`.
 - Tapes and tracks are placeholders from `sample-mixtapes.ts`. No backend, database
   or network calls exist except loading the two Google Fonts in `index.html`.
 
+## Streaming service matches
+
+The additive migration
+`packages/db/migrations/0001_track_streaming_matches.sql` adds an RLS-enabled
+`track_streaming_matches` table. One editorial track can have one confirmed
+recording per provider (for example, Spotify and SoundCloud); the primary key is
+`(track_id, provider)`. Different review/source rows may reference the same provider
+recording. The existing `tracks` identity and ingestion behavior are unchanged.
+
+The table stores durable provider identifiers, public attribution links, optional
+recording/uploader metadata, and matching status. It stores neither audio nor stream
+URLs, tokens, or listener playback eligibility. Matching/search, backfill and playback
+are not implemented. Migration `0001` was applied to the configured Supabase database
+with explicit authorization on 2026-11-12; its journal hash, columns, constraints and
+RLS state were verified with read-only queries. Other databases still require an
+explicitly authorized migration. It adds no grants or access policies. See the
+[streaming match contract](docs/ingestion-spec.md#streaming-match-schema) for fields
+and future writer responsibilities.
+
 ## Documentation
 
 - [Agent worktrees and human review](AGENTS.md#agent-worktrees-and-human-review): repository expectations for task isolation, PR feedback and post-merge cleanup.

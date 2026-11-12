@@ -17,6 +17,8 @@ export {
   type SourceRecord,
   type SourceDefinition,
   type TrackInput,
+  type StreamingMatchStatus,
+  type StreamingMatchMethod,
 } from "./models.ts";
 export type { IngestionStore } from "./ingestion-store.interface.ts";
 export { httpUrl, safeLogUrl } from "./urls.ts";

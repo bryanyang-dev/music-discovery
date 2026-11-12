@@ -34,7 +34,7 @@ test("driver and Drizzle-wrapped database failures produce specific, credential-
       const error = databaseError(input);
       assert.equal(error.code, expectedCode, driverCode);
       assert.equal(error.message, new IngestionError(expectedCode).message);
-      assert.ok(!error.stack?.includes("private"));
+      assert.doesNotMatch(error.stack ?? "", /private credentials|private_sql|private-password/);
       assert.ok(!JSON.stringify(error).includes("private"));
       assert.equal(error.cause, undefined);
     }

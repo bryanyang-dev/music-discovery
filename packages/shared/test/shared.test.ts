@@ -32,7 +32,7 @@ test("unknown errors never expose their original messages, causes or credentials
     cause: new Error("private SQL parameters"),
   }));
   assert.equal(error.code, "DATABASE_ERROR");
-  assert.ok(!error.stack?.includes("private"));
+  assert.doesNotMatch(error.stack ?? "", /private-password|private SQL parameters|postgres:\/\/user:/);
   assert.ok(!JSON.stringify(error).includes("private"));
   assert.equal(error.cause, undefined);
 });
