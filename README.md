@@ -1,14 +1,8 @@
-# Music discovery
+# Tape Journal
 
 <img width="1469" height="834" alt="ListeningRoomDark" src="https://github.com/user-attachments/assets/bd8dd343-2890-41ea-aa4a-1598e4ba3086" />
 
-A TypeScript AWS Lambda fetches a selected registered RSS source, enriches entries from
-review pages, logs parsed metadata, and upserts tracks into Supabase alongside
-source/run records. Results report inserted, updated, unchanged and rejected counts.
-Successful runs save feed validators; unchanged feeds skip review fetches and writes.
-Pitchfork Best New Tracks is currently the only implemented publisher adapter.
-The React + Vite frontend in `apps/web` renders the "Listening Room" cassette-player
-scene from local sample data; it does not read ingestion data or play audio yet.
+Every day, a new cassette tape is created with a selection of songs sourced from curated music blogs and music publications.
 
 ## Project structure
 
