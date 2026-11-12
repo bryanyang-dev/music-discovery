@@ -1259,3 +1259,13 @@ This section is updated as each task progresses, including verification evidence
   by Vite) passed. This resolves the blocker recorded in the rename entry above.
 - Reviewed README and repository instructions; no further documentation changes
   were needed for this type-narrowing fix. Lambda checks were skipped as unaffected.
+
+## 2026-11-12 21:27 UTC — Simplify README for readers and developers
+
+- Replaced the file inventory and operational runbooks with an app overview,
+  current prototype status, developer setup and essential commands.
+- Retained matcher configuration/contract details in the operations guide and
+  redirected affected documentation links. Recorded the README's scope in AGENTS.md.
+- Validation: checked Markdown formatting, local documentation links/anchors and
+  commands against package.json. Application tests, typechecking and Lambda builds
+  skipped because only documentation changed.
