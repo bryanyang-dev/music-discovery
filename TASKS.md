@@ -1038,3 +1038,14 @@ This section is updated as each task progresses, including verification evidence
   with the existing TS2345 nullability error at `FloorItem.tsx:74` (file unchanged
   by this rename). The standard web build includes that check and remains blocked.
   Lambda checks were skipped because this change only renames frontend files.
+
+## 2026-11-12 01:20 UTC — Fix draggable item stage nullability
+
+- Changed the pointer-move handler in `FloorItem.tsx` to a local arrow function
+  created after the stage null guard, allowing TypeScript to retain the non-null
+  stage type inside the callback. Drag behavior and listener cleanup are unchanged.
+- Validation using installed dependencies: root and web TypeScript checks passed,
+  all 16 web tests passed, and the complete web build sequence (TypeScript followed
+  by Vite) passed. This resolves the blocker recorded in the rename entry above.
+- Reviewed README and repository instructions; no further documentation changes
+  were needed for this type-narrowing fix. Lambda checks were skipped as unaffected.

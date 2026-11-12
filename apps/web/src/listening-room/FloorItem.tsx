@@ -59,7 +59,7 @@ export function FloorItem({ stageRef, dragHandle = "body", children }: FloorItem
     const startOffset = offset;
     let dragged = false;
 
-    function handleMove(moveEvent: globalThis.PointerEvent) {
+    const handleMove = (moveEvent: globalThis.PointerEvent) => {
       if (moveEvent.pointerId !== pointerId) {
         return;
       }
@@ -73,7 +73,7 @@ export function FloorItem({ stageRef, dragHandle = "body", children }: FloorItem
       }
       const point = clampToStage(toStagePoint(stage, moveEvent.clientX, moveEvent.clientY));
       setOffset({ x: startOffset.x + point.x - startPoint.x, y: startOffset.y + point.y - startPoint.y });
-    }
+    };
 
     function handleEnd(endEvent: globalThis.PointerEvent) {
       if (endEvent.pointerId !== pointerId) {
