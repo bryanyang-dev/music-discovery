@@ -13,14 +13,14 @@ CDK/CloudFormation stack manages the existing function.
 See [operations](operations.md) and [infrastructure status](../infra/README.md).
 The frontend is a listening-room prototype; there is no public API, playback or
 historical backfill. Spotify recording matching is a separate Lambda app; see
-[the matcher contract](../README.md#track-matcher-lambda).
+[the matcher contract](operations.md#track-matcher-configuration-and-contract).
 
 ## Discovery and extraction
 
 The source registry currently supports the Pitchfork adapter only; additional
 publisher adapters need their own tested URL and metadata rules. Source registration
 uses existing schema fields and requires no migration. See [source selection and
-registration](../README.md#selecting-and-registering-sources).
+registration](operations.md#source-selection-and-registration).
 
 Seeded source key (explicitly supplied in events): `pitchfork_best_new_tracks`. Feed:
 `https://pitchfork.com/feed/reviews/best/tracks/rss`.
@@ -99,7 +99,7 @@ lookup. Matcher writes lock the editorial track and reject changes to its title 
 credited artists since lookup began. Ingestion locks the same track and deletes
 all provider rows in its upsert transaction when title or artists change; review
 metadata changes preserve them. New providers must follow this locking contract.
-See [the matcher contract](../README.md#track-matcher-lambda) for search limits,
+See [the matcher contract](operations.md#track-matcher-configuration-and-contract) for search limits,
 invocation shape, errors and required permissions.
 Keep provider data outside the editorial metadata hash. Store no audio, temporary
 stream URLs, credentials, or global `is_playable` flag. Resolve playback availability

@@ -19,7 +19,7 @@ The handler reads the environment; it does not fetch Secrets Manager values.
 `pnpm upload:ingestion` updates ingestion code only, packaging `index.cjs` and the existing
 public CA certificate at the ZIP root. It preserves environment variables and
 other configuration. `pnpm build:lambda` builds locally without updating AWS.
-See [README](../README.md#deployment) for target/profile options and
+See [release configuration](../docs/operations.md#configuration-and-releases) for target/profile options and
 [operations](../docs/operations.md) for verification and troubleshooting.
 
 There is no active CDK setup. The canceled CDK installation added no dependencies.
@@ -33,7 +33,7 @@ ingestion. `pnpm upload:matcher` uses the target ARN, region and profile from
 can override those defaults. The command
 packages `dist/track-matcher/index.cjs` and the CA at the ZIP root. It updates code
 only. Configure its Spotify environment, timeout and database grants/RLS using
-[the matcher operations guide](../README.md#track-matcher-lambda). No matcher
+[the matcher operations guide](../docs/operations.md#track-matcher-configuration-and-contract). No matcher
 resources or ingestion-to-matcher trigger are defined by the retained template.
 
 Use `pnpm upload:lambda` for both apps in sequence with the shared defaults, or

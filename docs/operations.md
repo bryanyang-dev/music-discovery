@@ -12,7 +12,7 @@ credentials/grants/RLS, and CloudWatch logging permissions on the execution role
 Use `pnpm upload:ingestion` for tested ingestion code/CA uploads. It leaves console configuration
 unchanged. `pnpm build:lambda` builds locally only. Neither command uploads `.env`
 or copies local environment values into Lambda. After uploading, test `{"sourceKey":"pitchfork_best_new_tracks"}` in the
-console and inspect that request's logs. See [README](../README.md#deployment).
+console and inspect that request's logs.
 
 If the initial function check reports an expired AWS session, the upload script
 runs `aws login` using the selected region/profile (default `music-discovery`).
@@ -25,6 +25,13 @@ CloudFormation/CDK do not manage this function. The
 [retained template](../infra/README.md) does not establish live schedules, queues,
 alarms, retention or concurrency. Check those settings in the console as needed.
 
+Upload defaults live in [`scripts/lambda-targets.sh`](../scripts/lambda-targets.sh).
+Override ingestion's target with
+`pnpm upload:ingestion <function-name> <region> [aws-profile]`.
+The upload requires existing AWS CLI, pnpm and zip installations; it validates the
+function, runs checks, bundles the app and CA, then updates code with revision
+protection. It does not publish a version or invoke the function.
+
 ## Track matcher operations
 
 The console-created `trackMatcher` is a separate deployment. Use
@@ -33,7 +40,7 @@ The console-created `trackMatcher` is a separate deployment. Use
 are maintained in [`scripts/lambda-targets.sh`](../scripts/lambda-targets.sh).
 Explicit `<function-name> <region> [aws-profile]` arguments override these defaults.
 Both individual upload commands run the full offline checks and bundle smoke tests, then package
-only the selected app. See [matcher configuration and payload](../README.md#track-matcher-lambda)
+only the selected app. See [matcher configuration and contract](#track-matcher-configuration-and-contract)
 for Spotify variables, timeout, database permissions and example invocation.
 The matcher is invoked directly with one `trackId`; ingestion does not invoke it.
 
@@ -118,7 +125,7 @@ disabled sources skip; unsupported publisher/category pairs fail before run crea
 
 Use `pnpm sources:add --help` for the local registration command. After authorizing
 the database write, supply `--key`, `--name`, `--category` and `--feed-url`; see the
-[README example](../README.md#selecting-and-registering-sources). It uses `DATABASE_URL`,
+[example below](#source-registration-example). It uses `DATABASE_URL`,
 requires source INSERT privileges/RLS, rejects duplicate keys without updating old
 rows, and creates no trigger. It validates adapter compatibility before connecting.
 Only the Pitchfork Best New Tracks parser is currently supported; its stored
@@ -130,6 +137,74 @@ Live previews use `pnpm ingest:preview --source <key>` to read the source from
 Postgres and fetch/enrich without writing any source/run/track data. They load
 `.env` and require source SELECT grants/RLS. `pnpm ingest:fixture` remains entirely
 offline. Review-page failures terminate a preview; ingestion isolates bad reviews.
+
+### Source registration example
+
+After authorizing the database write:
+
+```sh
+pnpm sources:add --key pitchfork_copy --name pitchfork --category best_new_track --feed-url https://pitchfork.com/feed/reviews/best/tracks/rss
+```
+
+When the database requires the bundled CA, set
+`NODE_EXTRA_CA_CERTS="$PWD/certs/prod-ca-2021.crt"` before starting Node, including
+for ingestion and live previews.
+
+## Track matcher configuration and contract
+
+The separately console-created track matcher uses the same Node.js 24 ZIP layout
+and `index.handler` export as ingestion. Upload targets come from the shared
+defaults or explicit arguments; other live settings remain console-managed. Maintain its runtime,
+role, networking, triggers and environment in the AWS console. Set:
+
+- `DATABASE_URL` and `NODE_EXTRA_CA_CERTS=/var/task/prod-ca-2021.crt` as described under configuration and releases.
+- `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` from your Spotify developer app.
+- `SPOTIFY_MARKET`, a two-letter uppercase market such as `US`.
+- Timeout: 150 seconds recommended (120 seconds work plus 18.25 seconds cleanup).
+
+Invoke it with a persisted editorial track UUID:
+
+```json
+{ "trackId": "00000000-0000-4000-8000-000000000001" }
+```
+
+The matcher invocation contract is [`TrackMatcherEvent`](../apps/track-matcher/src/models.ts).
+Its [event parser](../apps/track-matcher/src/event-validation.ts) validates raw input
+before database access. Both handler signatures use their specific event types
+for TypeScript callers and editor hints. Runtime validation remains necessary
+because incoming JSON can bypass TypeScript checks.
+
+The UUID must identify an actual `tracks` row. Artist/title fields supplied in the
+event are ignored. The result includes `trackId`, `provider: "spotify"`, and
+`status` (`matched`, `not_found`, or `ambiguous`). A matched result also contains
+`providerTrackId`, canonical public `providerUrl`, `providerTitle` and
+`providerArtists` (stored attribution may be null for an existing manual match).
+No playback token or audio URL is returned.
+
+The matcher uses Spotify's [client credentials flow](https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow)
+and [catalog search](https://developer.spotify.com/documentation/web-api/reference/search).
+It compares Unicode-normalized, case-insensitive titles and complete artist sets,
+collapsing whitespace. A trailing `Bonus Track` release label is ignored on either
+title when separated by a spaced hyphen/en dash/em dash or enclosed in spaced
+parentheses/brackets (for example, `Born Again - Bonus Track` matches `Born Again`).
+The original Spotify title is retained in match metadata. Other punctuation,
+accents and version suffixes such as `Live` or `Remix` remain meaningful.
+It does not choose the first search hit or infer featured-artist credits. Distinct
+qualifying provider IDs are ambiguous, including album/single duplicates. Search
+is capped at five pages of ten results; an incomplete search is also ambiguous.
+These conservative rules can leave valid recordings unresolved.
+
+Successful lookups save `matched`, `not_found` or `ambiguous` in
+`track_streaming_matches`. Established matches (including manual matches) are
+preserved by repeated automatic lookups. Provider failures throw safe error codes
+and update attempt/error fields without replacing a confirmed recording. A work
+deadline skips diagnostic writes; failed diagnostic writes preserve the primary
+error. Track identity changes during lookup reject the stale write. Ingestion
+invalidates all provider rows when title or credited artists change, while review
+metadata changes preserve them. This requires DELETE access/RLS on provider rows
+for the ingestion database role, in addition to existing permissions. The matcher
+role needs SELECT on tracks and SELECT/INSERT/UPDATE on streaming matches, with
+suitable RLS policies. Code uploads do not apply grants, policies or migrations.
 
 ## Track persistence
 

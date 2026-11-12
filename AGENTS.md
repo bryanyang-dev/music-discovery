@@ -17,6 +17,8 @@ These rules supplement inherited instructions, including the dependency-installa
   task, without waiting for a separate request. Documentation is part of completion.
 - Keep behavior, commands, configuration, limits, examples and operational guidance
   consistent with the final implementation. Remove or correct superseded claims.
+- Keep README focused on the app overview and developer setup; put operational
+  details in `docs/operations.md` and implementation contracts in the specification.
 - Update existing documentation rather than duplicating it; keep it concise and
   verify affected links. Record significant changes and validation in `TASKS.md`.
 - Include the current timestamp and timezone in every new `TASKS.md` section
