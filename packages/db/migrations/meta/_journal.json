@@ -15,6 +15,13 @@
       "when": 1794460015919,
       "tag": "0001_track_streaming_matches",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794513608825,
+      "tag": "0002_ingestion_run_counts",
+      "breakpoints": true
     }
   ]
 }

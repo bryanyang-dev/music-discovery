@@ -1,5 +1,29 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 20:02 UTC — Persist ingestion track activity counts
+
+- Confirmed `not_modified` records HTTP 304, independently of database changes.
+  Refreshing a track's `last_seen_at` already returns `unchanged` metadata.
+- Added explicit `seen` (valid extracted tracks) and `existing` (committed updated
+  plus unchanged rows) totals to run results/logs. Finalization persists these and
+  existing found/inserted/updated/unchanged/rejected totals atomically with run and
+  source state, including failures. Seen tracks can include a failed database
+  write; committed insert/existing counts do not.
+- Added migration `0002_ingestion_run_counts.sql` and its snapshot. Counters are
+  nullable so historical and unfinalized runs remain unknown rather than falsely
+  zero. Apply the migration before deploying the updated ingestion code. No
+  historical backfill, remote migration or deployment was performed.
+- Made concurrent first sightings report only the transaction that actually
+  inserted the source/URL as new; a conflicting insertion reloads and locks the
+  existing row before metadata merging and classification.
+- Updated ingestion/operations guidance, diagnostic SQL and AGENTS.md semantics.
+  Added mixed/new/existing, 304, failed-write, logging and migration regressions,
+  plus database persistence/concurrency cases.
+- Validation: approved frozen-lockfile install (60 packages reused, none downloaded),
+  typechecking, 186 offline tests, six Lambda bundle tests, formatting and
+  `git diff --check` passed. All 11 database integration tests skipped because
+  `TEST_DATABASE_URL` is not configured in this worktree.
+
 ## 2026-11-12 19:43 UTC — Type the Lambda handler parameters directly
 
 - Applied `IngestionEvent` and `TrackMatcherEvent` directly to their handler event

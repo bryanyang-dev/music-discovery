@@ -121,10 +121,19 @@ retain `writeSkipped: true`; `pnpm ingest:preview` and `pnpm ingest:fixture` nev
 | `failed`          | Feed, database or deadline failure; handler throws after cleanup                                |
 | `skipped`         | Source disabled; no run row created                                                             |
 
-Inserted/updated/unchanged counts reflect completed database upserts. `found`
-counts raw RSS items; `rejected` counts invalid entries/reviews. Counts are returned/logged, not stored
-as database columns. A startup failure can produce `ingestion_failed` without a
-completion event. A worker killed before finalization can leave a `running` row.
+After applying migration `0002_ingestion_run_counts.sql` and deploying the updated
+ingestion code, counters are stored at run finalization and returned/logged.
+`seen` counts valid extracted tracks; `inserted` counts committed new rows;
+`existing` counts committed upserts of existing rows (`updated + unchanged`).
+Refreshing `last_seen_at` alone is unchanged. `found` counts raw RSS items before
+deduplication; `rejected` counts invalid entries/reviews. Failed writes can leave
+`seen > inserted + existing`. See [count semantics](ingestion-spec.md#ingestion-writes).
+
+`not_modified` means HTTP 304, with zero tracks inspected and zero counters. HTTP
+200 can have `inserted = 0` and `not_modified = false`. Historical or unfinalized
+runs have NULL counters, not reconstructed zeros. A startup failure can produce
+`ingestion_failed` without a completion event. A worker killed before finalization
+can leave a `running` row and unknown counts.
 
 ## Database request and response logs
 
@@ -198,7 +207,9 @@ Run in Supabase SQL Editor or a trusted SQL client:
 ```sql
 SELECT key, enabled, last_attempt_at, last_success_at FROM ingestion_sources;
 
-SELECT started_at, finished_at, status, errors
+-- Requires migration 0002; NULL counts mean unavailable, not zero.
+SELECT id, started_at, finished_at, status, not_modified,
+       seen, inserted, existing, found, updated, unchanged, rejected, errors
 FROM ingestion_runs ORDER BY started_at DESC LIMIT 24;
 
 SELECT source_id, source_url, track_title, artists, first_seen_at, last_seen_at

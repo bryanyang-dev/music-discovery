@@ -32,6 +32,8 @@ test("each query logs correlated response rows with sensitive values redacted", 
       {
         id: "row-1",
         key: "registered_feed",
+        seen: 5,
+        existing: 3,
         password: "private-row-value",
         feedUrl: "https://example.org/?token=secret",
       },
@@ -71,7 +73,13 @@ test("each query logs correlated response rows with sensitive values redacted", 
     ),
   );
   assert.deepEqual(response?.response, [
-    { id: "row-1", key: "registered_feed", feedUrl: "https://example.org/" },
+    {
+      id: "row-1",
+      key: "registered_feed",
+      seen: 5,
+      existing: 3,
+      feedUrl: "https://example.org/",
+    },
   ]);
   assert.equal(response?.responseTruncated, false);
   assert.doesNotMatch(

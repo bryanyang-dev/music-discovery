@@ -66,9 +66,13 @@ async function processFeedEntries(
       continue;
     }
 
+    result.seen++;
     onTrackExtracted(track);
     const outcome = await store.upsertTrack(source, result.runId, track);
     result[outcome]++;
+    if (outcome !== "inserted") {
+      result.existing++;
+    }
   }
 
   if (result.rejected > 0) {
