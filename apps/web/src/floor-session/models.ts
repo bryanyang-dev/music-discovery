@@ -8,3 +8,9 @@ export interface Mixtape {
   readonly date: string;
   readonly tracks: readonly Track[];
 }
+
+/** Where a tape lying on the floor sits: the cassette's centre, in artboard pixels. */
+export interface FloorPosition {
+  readonly x: number;
+  readonly y: number;
+}

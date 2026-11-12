@@ -1002,3 +1002,19 @@ This section is updated as each task progresses, including verification evidence
   dark-preference start and scaling to 960x700, with no page errors; day and night
   screenshots matched the mockups. `pnpm test:bundle` was not rerun: the Lambda
   bundle is unaffected.
+
+## 2026-11-12 01:12 UTC — Let tapes rest on the floor (PR #4 follow-up)
+
+- Reported: a tape put down on the mat could not be picked up and moved. A tape
+  dropped outside the player previously snapped back to the box.
+- Tapes now have three places: player, box, or floor. A dropped tape stays where it
+  lands (kept fully on the artboard), can be dragged again from its grip point,
+  dropped on the box to put it away, or dropped on/clicked to load it. Its box slot
+  reads "ON THE FLOOR". The player itself is still fixed.
+- `mixtape-session.ts` gained `floorTapes` with `placeTapeOnFloor`/`returnTapeToBox`;
+  `use-tape-drag.ts` reports the drop target and also recovers if the browser takes
+  the pointer mid-drag.
+- Validation: `pnpm typecheck` passed; `pnpm test` 120/120 and 30/30 passed;
+  `pnpm web:build` passed. The headless Chrome run passed with new checks: drop on
+  the mat, move twice, a second floor tape clamped at the edge, return to box, load
+  from the mat by drag and by click; no page errors.

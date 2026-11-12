@@ -804,17 +804,34 @@ body {
   animation-play-state: running;
 }
 
-/* A tape lifted out of the box follows the pointer. */
-.tape-drag {
+/* A cassette on the floor: resting where it was dropped, or lifted and following the pointer. */
+.floor-tape {
   position: absolute;
   width: 190px;
   height: 120px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
   transform: rotate(12deg);
+  cursor: grab;
+  touch-action: none;
+}
+
+.floor-tape .cassette {
+  box-shadow: 9px 11px 0 var(--shadow);
+}
+
+.floor-tape--lifted {
   pointer-events: none;
 }
 
-.tape-drag .cassette {
+.floor-tape--lifted .cassette {
   box-shadow: 24px 28px 0 var(--drag-shadow);
+}
+
+.floor-tape-slot--carried {
+  opacity: 0;
 }
 
 .sparkle {

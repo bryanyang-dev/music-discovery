@@ -1,21 +1,28 @@
 import { useRef, useState, type PointerEvent, type RefObject } from "react";
+import type { FloorPosition } from "./models.ts";
 import { stageWidthPx } from "./use-stage-scale.ts";
 
-/** Pointer travel before a press on a boxed tape becomes a drag instead of a click. */
+/** Pointer travel before a press on a tape becomes a drag instead of a click. */
 const dragStartThresholdPx = 4;
 
-/** A tape lifted off the floor; `x`/`y` are the pointer position in artboard pixels. */
+/** A tape lifted off the floor or out of the box; `center` is the cassette's centre in artboard pixels. */
 export interface TapeDrag {
   readonly tapeDate: string;
-  readonly x: number;
-  readonly y: number;
+  readonly center: FloorPosition;
 }
 
-export interface TapeSlotHandlers {
+/** Where a dragged tape was let go. */
+export type TapeDropTarget = "player" | "box" | "floor";
+
+/** Where a tape was picked up from. A floor tape keeps the grip point; a boxed tape is carried by its centre. */
+export type TapeOrigin = "box" | "floor";
+
+export interface TapeDragHandlers {
   readonly onPointerDown: (event: PointerEvent<HTMLButtonElement>) => void;
   readonly onPointerMove: (event: PointerEvent<HTMLButtonElement>) => void;
   readonly onPointerUp: (event: PointerEvent<HTMLButtonElement>) => void;
   readonly onPointerCancel: () => void;
+  readonly onLostPointerCapture: () => void;
   readonly onClick: () => void;
 }
 
@@ -24,65 +31,102 @@ interface PendingPress {
   readonly pointerId: number;
   readonly startX: number;
   readonly startY: number;
+  /** Pointer position minus cassette centre, in artboard pixels. */
+  readonly gripOffset: FloorPosition;
   dragged: boolean;
 }
 
 interface UseTapeDragOptions {
   readonly stageRef: RefObject<HTMLElement | null>;
   readonly playerRef: RefObject<HTMLElement | null>;
-  readonly onLoadTape: (tapeDate: string) => void;
+  readonly boxRef: RefObject<HTMLElement | null>;
+  /** A tape was dragged and released; `center` is where the cassette's centre ended up. */
+  readonly onDropTape: (tapeDate: string, target: TapeDropTarget, center: FloorPosition) => void;
+  /** A tape was clicked or activated from the keyboard without dragging. */
+  readonly onActivateTape: (tapeDate: string) => void;
 }
 
 interface UseTapeDragResult {
   readonly drag: TapeDrag | null;
-  readonly getSlotHandlers: (tapeDate: string) => TapeSlotHandlers;
+  readonly getTapeHandlers: (tapeDate: string, origin: TapeOrigin) => TapeDragHandlers;
+}
+
+function containsPoint(element: HTMLElement | null, clientX: number, clientY: number): boolean {
+  if (!element) {
+    return false;
+  }
+  const rect = element.getBoundingClientRect();
+  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
 }
 
 /**
- * Lets a boxed tape be dragged onto the player to load it. A plain click or
- * keyboard activation loads it directly, so dragging is never required.
+ * Lets a tape be dragged between the box, the floor and the player. A plain
+ * click or keyboard activation is reported separately, so dragging is never required.
  */
-export function useTapeDrag({ stageRef, playerRef, onLoadTape }: UseTapeDragOptions): UseTapeDragResult {
+export function useTapeDrag({
+  stageRef,
+  playerRef,
+  boxRef,
+  onDropTape,
+  onActivateTape,
+}: UseTapeDragOptions): UseTapeDragResult {
   const [drag, setDrag] = useState<TapeDrag | null>(null);
   const pendingPress = useRef<PendingPress | null>(null);
   const suppressNextClick = useRef(false);
 
-  function toStagePoint(clientX: number, clientY: number): { x: number; y: number } | null {
+  function stageScale(stage: HTMLElement): number {
+    return stage.getBoundingClientRect().width / stageWidthPx;
+  }
+
+  function toStagePoint(clientX: number, clientY: number): FloorPosition | null {
     const stage = stageRef.current;
     if (!stage) {
       return null;
     }
     const stageRect = stage.getBoundingClientRect();
-    const scale = stageRect.width / stageWidthPx;
+    const scale = stageScale(stage);
     return { x: (clientX - stageRect.left) / scale, y: (clientY - stageRect.top) / scale };
   }
 
-  function isOverPlayer(clientX: number, clientY: number): boolean {
-    const player = playerRef.current;
-    if (!player) {
-      return false;
+  function tapeCenter(press: PendingPress, clientX: number, clientY: number): FloorPosition | null {
+    const point = toStagePoint(clientX, clientY);
+    if (!point) {
+      return null;
     }
-    const playerRect = player.getBoundingClientRect();
-    return (
-      clientX >= playerRect.left &&
-      clientX <= playerRect.right &&
-      clientY >= playerRect.top &&
-      clientY <= playerRect.bottom
-    );
+    return { x: point.x - press.gripOffset.x, y: point.y - press.gripOffset.y };
   }
 
-  function getSlotHandlers(tapeDate: string): TapeSlotHandlers {
+  function abandonPress() {
+    pendingPress.current = null;
+    setDrag(null);
+  }
+
+  function getTapeHandlers(tapeDate: string, origin: TapeOrigin): TapeDragHandlers {
     return {
       onPointerDown(event) {
         suppressNextClick.current = false;
         if (event.button !== 0) {
           return;
         }
+
+        let gripOffset: FloorPosition = { x: 0, y: 0 };
+        const stage = stageRef.current;
+        if (origin === "floor" && stage) {
+          // Rotation does not move an element's centre, so the bounding box centre is the cassette centre.
+          const tapeRect = event.currentTarget.getBoundingClientRect();
+          const scale = stageScale(stage);
+          gripOffset = {
+            x: (event.clientX - (tapeRect.left + tapeRect.width / 2)) / scale,
+            y: (event.clientY - (tapeRect.top + tapeRect.height / 2)) / scale,
+          };
+        }
+
         pendingPress.current = {
           tapeDate,
           pointerId: event.pointerId,
           startX: event.clientX,
           startY: event.clientY,
+          gripOffset,
           dragged: false,
         };
         event.currentTarget.setPointerCapture(event.pointerId);
@@ -100,9 +144,9 @@ export function useTapeDrag({ stageRef, playerRef, onLoadTape }: UseTapeDragOpti
           }
           press.dragged = true;
         }
-        const point = toStagePoint(event.clientX, event.clientY);
-        if (point) {
-          setDrag({ tapeDate: press.tapeDate, x: point.x, y: point.y });
+        const center = tapeCenter(press, event.clientX, event.clientY);
+        if (center) {
+          setDrag({ tapeDate: press.tapeDate, center });
         }
       },
 
@@ -112,17 +156,30 @@ export function useTapeDrag({ stageRef, playerRef, onLoadTape }: UseTapeDragOpti
         if (!press || !press.dragged) {
           return;
         }
-        // The browser still fires a click after a drag; that click must not load the tape.
+        // The browser still fires a click after a drag; that click must not activate the tape.
         suppressNextClick.current = true;
         setDrag(null);
-        if (isOverPlayer(event.clientX, event.clientY)) {
-          onLoadTape(press.tapeDate);
+
+        const center = tapeCenter(press, event.clientX, event.clientY);
+        if (!center) {
+          return;
         }
+        let target: TapeDropTarget = "floor";
+        if (containsPoint(playerRef.current, event.clientX, event.clientY)) {
+          target = "player";
+        } else if (containsPoint(boxRef.current, event.clientX, event.clientY)) {
+          target = "box";
+        }
+        onDropTape(press.tapeDate, target, center);
       },
 
-      onPointerCancel() {
-        pendingPress.current = null;
-        setDrag(null);
+      onPointerCancel: abandonPress,
+
+      // If the browser takes the pointer away mid-drag, put the tape back where it was.
+      onLostPointerCapture() {
+        if (pendingPress.current) {
+          abandonPress();
+        }
       },
 
       onClick() {
@@ -130,10 +187,10 @@ export function useTapeDrag({ stageRef, playerRef, onLoadTape }: UseTapeDragOpti
           suppressNextClick.current = false;
           return;
         }
-        onLoadTape(tapeDate);
+        onActivateTape(tapeDate);
       },
     };
   }
 
-  return { drag, getSlotHandlers };
+  return { drag, getTapeHandlers };
 }

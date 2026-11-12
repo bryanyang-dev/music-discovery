@@ -83,3 +83,44 @@ test("ejecting empties the player and disables transport", () => {
   assert.equal(run(empty, { type: "nextTrack" }), empty);
   assert.equal(run(empty, { type: "ejectTape" }), empty);
 });
+
+test("a boxed tape can be left on the floor, moved, and put back in the box", () => {
+  const start = createMixtapeSession(tapes);
+  assert.deepEqual(start.floorTapes, {});
+
+  const onFloor = run(start, { type: "placeTapeOnFloor", date: "2026-11-10", position: { x: 300, y: 500 } });
+  assert.deepEqual(onFloor.floorTapes, { "2026-11-10": { x: 300, y: 500 } });
+
+  const moved = run(onFloor, { type: "placeTapeOnFloor", date: "2026-11-10", position: { x: 640, y: 720 } });
+  assert.deepEqual(moved.floorTapes, { "2026-11-10": { x: 640, y: 720 } });
+
+  const boxed = run(moved, { type: "returnTapeToBox", date: "2026-11-10" });
+  assert.deepEqual(boxed.floorTapes, {});
+  assert.equal(run(boxed, { type: "returnTapeToBox", date: "2026-11-10" }), boxed);
+});
+
+test("loading a tape from the floor takes it off the floor", () => {
+  const onFloor = run(createMixtapeSession(tapes), {
+    type: "placeTapeOnFloor",
+    date: "2026-11-10",
+    position: { x: 300, y: 500 },
+  });
+  const loaded = run(onFloor, { type: "loadTape", date: "2026-11-10" });
+  assert.equal(loaded.loadedTapeDate, "2026-11-10");
+  assert.deepEqual(loaded.floorTapes, {});
+});
+
+test("the loaded tape and unknown tapes cannot be placed on the floor", () => {
+  const start = createMixtapeSession(tapes);
+  assert.equal(run(start, { type: "placeTapeOnFloor", date: "2026-11-11", position: { x: 1, y: 2 } }), start);
+  assert.equal(run(start, { type: "placeTapeOnFloor", date: "1999-01-01", position: { x: 1, y: 2 } }), start);
+});
+
+test("ejecting leaves floor tapes where they are", () => {
+  const onFloor = run(createMixtapeSession(tapes), {
+    type: "placeTapeOnFloor",
+    date: "2026-11-10",
+    position: { x: 300, y: 500 },
+  });
+  assert.deepEqual(run(onFloor, { type: "ejectTape" }).floorTapes, onFloor.floorTapes);
+});

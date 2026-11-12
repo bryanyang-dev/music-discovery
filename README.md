@@ -35,11 +35,12 @@ apps/web/
       FloorSession.tsx                Scene composition, artboard scaling and session wiring
       floor-session.css               Design values; per-theme custom properties
       models.ts                       Track and mixtape data shapes
-      mixtape-session.ts              Player state reducer (load, eject, play, stop, track changes)
+      mixtape-session.ts              Player and tape-location reducer (load, eject, floor, transport)
       sample-mixtapes.ts              Placeholder week of tapes ending today
       tape-date-labels.ts             Tape date labels (English, Japanese, spoken)
       use-stage-scale.ts              Fits the 1440x900 artboard to its container
-      use-tape-drag.ts                Drag a boxed tape onto the player; click also loads
+      use-tape-drag.ts                Drag tapes between box, floor and player; click also loads
+      FloorTape.tsx                   A cassette resting on the floor or being carried
       CassettePlayer.tsx, Cassette.tsx, JCard.tsx, TapeBox.tsx, ThemeLamp.tsx
       Headphones.tsx, RoomAtmosphere.tsx, FloorDecor.tsx
   test/                               Session, sample data and date label tests
@@ -240,8 +241,10 @@ tatami floor with a portable cassette player. Each day's recommendations are one
 dated tape; the J-card lists its tracks and the "THIS WEEK" box holds the last
 seven days. Run it with `pnpm web:dev`.
 
-- Load a tape by dragging it from the box onto the player, or by clicking it
-  (keyboard: focus it and press Enter). OPEN ejects the tape back to the box.
+- Load a tape by dragging it onto the player, or by clicking it (keyboard: focus
+  it and press Enter). OPEN ejects the tape back to the box.
+- A tape dropped on the floor stays where it lands and can be picked up again;
+  drop it on the box to put it away. The player itself does not move.
 - Play/pause, stop, next and previous update the LCD and the highlighted track.
   Playback is visual only and the volume slider controls nothing: there is no
   audio source yet.

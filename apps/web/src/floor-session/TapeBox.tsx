@@ -1,18 +1,29 @@
+import type { Ref } from "react";
 import type { Mixtape } from "./models.ts";
 import { describeTapeDate } from "./tape-date-labels.ts";
-import type { TapeSlotHandlers } from "./use-tape-drag.ts";
+import type { TapeDragHandlers } from "./use-tape-drag.ts";
 
 interface TapeBoxProps {
+  readonly ref: Ref<HTMLElement>;
   readonly tapes: readonly Mixtape[];
   readonly loadedTapeDate: string | null;
+  /** Dates of tapes lying on the floor; their slots are empty. */
+  readonly floorTapeDates: readonly string[];
   readonly draggingTapeDate: string | null;
-  readonly getSlotHandlers: (tapeDate: string) => TapeSlotHandlers;
+  readonly getTapeHandlers: (tapeDate: string) => TapeDragHandlers;
 }
 
-/** The box of this week's tapes. The loaded tape leaves an empty, dashed slot behind. */
-export function TapeBox({ tapes, loadedTapeDate, draggingTapeDate, getSlotHandlers }: TapeBoxProps) {
+/** The box of this week's tapes. A tape that is in the player or on the floor leaves a dashed, empty slot. */
+export function TapeBox({
+  ref,
+  tapes,
+  loadedTapeDate,
+  floorTapeDates,
+  draggingTapeDate,
+  getTapeHandlers,
+}: TapeBoxProps) {
   return (
-    <section className="tape-box" aria-label="This week's tapes">
+    <section ref={ref} className="tape-box" aria-label="This week's tapes">
       <div className="tape-box__tab">
         THIS WEEK<span lang="ja"> ・ 今週</span>
       </div>
@@ -26,6 +37,13 @@ export function TapeBox({ tapes, loadedTapeDate, draggingTapeDate, getSlotHandle
             </div>
           );
         }
+        if (floorTapeDates.includes(tape.date)) {
+          return (
+            <div key={tape.date} className="tape-box__empty-slot">
+              {labels.slotLabel} · ON THE FLOOR
+            </div>
+          );
+        }
 
         const isDragging = tape.date === draggingTapeDate;
         return (
@@ -35,7 +53,7 @@ export function TapeBox({ tapes, loadedTapeDate, draggingTapeDate, getSlotHandle
             className={isDragging ? "tape-box__tape tape-box__tape--lifted" : "tape-box__tape"}
             data-weekday={labels.weekdayIndex}
             aria-label={`Load tape, ${labels.spokenDate}`}
-            {...getSlotHandlers(tape.date)}
+            {...getTapeHandlers(tape.date)}
           >
             <span className="tape-box__tape-label">
               <span>{labels.tapeLabel}</span>
