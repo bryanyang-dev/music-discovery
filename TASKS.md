@@ -1,5 +1,23 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 20:20 UTC — Log every Spotify HTTP call
+
+- Added paired `spotify_request`/`spotify_response` JSON events for client-credentials
+  requests and every catalog search page, with unique call IDs, invocation request
+  IDs, editorial track IDs, operation/offset, duration, HTTP status and safe failure codes.
+- Kept credentials, headers, URLs/query text and raw bodies out of logs. Logging
+  failures preserve HTTP results; HTTP success records JSON parsing, with later
+  response-shape validation still owned by the search workflow.
+- Added coverage for pagination, handler correlation, redaction, HTTP/network/body/
+  JSON/size failures, cancellation, timeout policy and throwing loggers. Updated
+  the README, operations guide and agent guidance.
+- Validation: typechecks, full offline suite, both Lambda builds and six bundle
+  tests passed. No live Spotify calls, database writes or deployment occurred.
+- The first `pnpm format` unexpectedly attempted an automatic install before approval;
+  DNS failed and the process was stopped. The subsequently approved frozen-lockfile
+  install reused cached packages with zero downloads. Documented pnpm's automatic
+  installation behavior so future empty-worktree script runs require approval first.
+
 ## 2026-11-12 19:43 UTC — Type the Lambda handler parameters directly
 
 - Applied `IngestionEvent` and `TrackMatcherEvent` directly to their handler event
