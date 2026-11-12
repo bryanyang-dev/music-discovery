@@ -92,6 +92,9 @@ test("upserts classify inserted, unchanged and updated tracks across runs", asyn
       }),
     );
     assert.equal(result.status, "succeeded");
+    assert.equal(result.notModified, false);
+    assert.equal(result.seen, 1);
+    assert.equal(result.existing, Number(outcome !== "inserted"));
     assert.deepEqual(
       [result.inserted, result.updated, result.unchanged],
       [
@@ -126,6 +129,8 @@ test("a malformed entry does not block a healthy one and clears validators", asy
   assert.equal(result.found, 2);
   assert.equal(result.inserted, 1);
   assert.equal(result.rejected, 1);
+  assert.equal(result.seen, 1);
+  assert.equal(result.existing, 0);
   assert.equal(memory.source.etag, null);
   assert.equal(memory.caches[0], null);
 });
@@ -229,6 +234,9 @@ test("304 reuses cached validators without page requests or track writes", async
   );
   assert.equal(calls, 1);
   assert.equal(result.notModified, true);
+  assert.equal(result.seen, 0);
+  assert.equal(result.inserted, 0);
+  assert.equal(result.existing, 0);
   assert.equal(result.found, 0);
   assert.equal(result.status, "succeeded");
   assert.deepEqual(memory.caches[0], {
@@ -274,6 +282,9 @@ test("a failed write preserves earlier commits, stops later entries and clears v
   assert.equal(result.status, "failed");
   assert.equal(result.inserted, 1);
   assert.equal(result.rejected, 0);
+  assert.equal(result.found, 3);
+  assert.equal(result.seen, 2);
+  assert.equal(result.existing, 0);
   assert.equal(writes, 2);
   assert.equal(memory.tracks.size, 1);
   assert.ok(memory.tracks.has(url));
@@ -420,4 +431,30 @@ test("review cancellation stops processing without rejecting entries or writing 
   assert.equal(memory.finished.length, 1);
   assert.equal(memory.caches[0], null);
   assert.ok(!JSON.stringify(result).includes("private"));
+});
+
+test("mixed new and existing tracks report explicit totals", async () => {
+  const memory = memoryStore();
+  const item = xml.match(/<item>[\s\S]*?<\/item>/)![0];
+  const feed = xml.replace(
+    "</channel>",
+    item.replaceAll("example-a-song", "second-song") +
+      item.replaceAll("example-a-song", "third-song") +
+      "</channel>",
+  );
+  const outcomes = ["inserted", "updated", "unchanged"] as const;
+  let index = 0;
+  memory.store.upsertTrack = async () => outcomes[index++]!;
+  const result = completed(
+    await ingestSource(memory.store, memory.source.key, {
+      http: { fetcher: fetcher(feed) },
+    }),
+  );
+  assert.equal(result.found, 3);
+  assert.equal(result.seen, 3);
+  assert.equal(result.inserted, 1);
+  assert.equal(result.existing, 2);
+  assert.equal(result.updated, 1);
+  assert.equal(result.unchanged, 1);
+  assert.equal(result.notModified, false);
 });

@@ -86,6 +86,7 @@ function successful(runId: string): RunResult {
     status: "succeeded",
     ...emptyCounts(),
     inserted: 1,
+    seen: 1,
     found: 1,
     errors: [],
     notModified: false,
@@ -682,6 +683,100 @@ test(
         state.database.matching.saveMatch(target, match),
         /TRACK_CHANGED/,
       );
+    } finally {
+      await state.cleanup();
+    }
+  },
+);
+
+test(
+  "finalized runs persist counts and unfinished runs keep unknown counts",
+  { skip: !connectionString },
+  async () => {
+    const state = await fixture();
+    try {
+      const source = await state.database.store.getSource(state.keys[0]!);
+      assert.ok(source);
+      for (const status of [
+        "succeeded",
+        "partial_failure",
+        "failed",
+      ] as const) {
+        const runId = await state.database.store.beginRun(source);
+        const [running] = await state.database.db
+          .select()
+          .from(ingestionRuns)
+          .where(eq(ingestionRuns.id, runId));
+        assert.equal(running?.seen, null);
+        assert.equal(running?.inserted, null);
+        assert.equal(running?.existing, null);
+        const result: RunResult = {
+          runId,
+          status,
+          found: 5,
+          seen: 4,
+          inserted: 1,
+          existing: 2,
+          updated: 1,
+          unchanged: 1,
+          rejected: 1,
+          notModified: false,
+          errors: [],
+        };
+        await state.database.store.finishRun(source, result, null);
+        const [saved] = await state.database.db
+          .select()
+          .from(ingestionRuns)
+          .where(eq(ingestionRuns.id, runId));
+        for (const key of [
+          "found",
+          "seen",
+          "inserted",
+          "existing",
+          "updated",
+          "unchanged",
+          "rejected",
+          "notModified",
+          "status",
+        ] as const) {
+          assert.equal(saved?.[key], result[key]);
+        }
+      }
+      const runId = await state.database.store.beginRun(source);
+      await state.database.store.finishRun(
+        source,
+        { ...successful(runId), ...emptyCounts(), notModified: true },
+        null,
+      );
+      const [cached] = await state.database.db
+        .select()
+        .from(ingestionRuns)
+        .where(eq(ingestionRuns.id, runId));
+      assert.equal(cached?.seen, 0);
+      assert.equal(cached?.inserted, 0);
+      assert.equal(cached?.existing, 0);
+      assert.equal(cached?.notModified, true);
+    } finally {
+      await state.cleanup();
+    }
+  },
+);
+
+test(
+  "concurrent first sightings count only one actual insert",
+  { skip: !connectionString },
+  async () => {
+    const state = await fixture();
+    try {
+      const source = await state.database.store.getSource(state.keys[0]!);
+      assert.ok(source);
+      const firstRun = await state.database.store.beginRun(source);
+      const secondRun = await state.other.store.beginRun(source);
+      const outcomes = await Promise.all([
+        state.database.store.upsertTrack(source, firstRun, article),
+        state.other.store.upsertTrack(source, secondRun, article),
+      ]);
+      assert.deepEqual(outcomes.sort(), ["inserted", "unchanged"]);
     } finally {
       await state.cleanup();
     }

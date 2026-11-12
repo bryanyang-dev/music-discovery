@@ -4,6 +4,7 @@ import {
   check,
   date,
   index,
+  integer,
   jsonb,
   pgTable,
   primaryKey,
@@ -155,6 +156,14 @@ export const ingestionRuns = pgTable(
     finishedAt: timestamp("finished_at", { withTimezone: true }),
     status: text("status").$type<RunStatus>().default("running").notNull(),
     notModified: boolean("not_modified").default(false).notNull(),
+    // NULL means unavailable: historical runs or runs not yet finalized.
+    found: integer("found"),
+    seen: integer("seen"),
+    inserted: integer("inserted"),
+    existing: integer("existing"),
+    updated: integer("updated"),
+    unchanged: integer("unchanged"),
+    rejected: integer("rejected"),
     errors: jsonb("errors")
       .$type<RunIssue[]>()
       .default(sql`'[]'::jsonb`)

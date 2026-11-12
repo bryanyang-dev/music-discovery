@@ -131,9 +131,31 @@ policies; public clients must not gain table access. Preserve applied migrations
    clear validators for an unconditional retry.
 6. The handler closes the database in `finally` on success or failure.
 
-Counts are returned/logged, not persisted as columns. Inserted/updated/unchanged
-count completed upserts; rejected counts invalid entries/reviews. Duplicates and
-unprocessed entries mean `found` need not equal the sum of result counters.
+Migration `0002_ingestion_run_counts.sql` adds nullable run counters. Apply it before
+deploying the updated ingestion code. Finalization saves the counters atomically
+with run/source state, including partial and failed runs; results and completion
+logs include the same counts. Historical and unfinalized runs retain NULL counters
+because their totals are unknown; no timestamp-based backfill is reliable.
+
+- `found`: raw feed items, before deduplication and validation.
+- `seen`: valid tracks extracted from distinct canonical review URLs, including a
+  track whose database write subsequently fails.
+- `inserted`: new editorial track rows successfully committed.
+- `existing`: successfully processed rows already present, equal to `updated + unchanged`.
+- `updated` / `unchanged`: existing rows with changed / identical editorial metadata.
+  Refreshing `last_seen_at` alone counts as unchanged.
+- `rejected`: invalid feed entries or failed review extractions.
+
+For a fully processed run, `seen = inserted + existing`. A database failure can
+leave `seen` larger because the failing write was not committed. Duplicates,
+rejections and unprocessed entries mean `found` need not equal these totals.
+Existing/new classification uses the source and canonical review URL, rather than
+artist/title or streaming-provider identity. Concurrent first sightings count only
+the transaction that actually inserted the row as new.
+
+`not_modified` means only that the feed returned HTTP 304. Such runs inspect no
+tracks and finalize with all counters zero. An HTTP 200 with entirely existing
+tracks still has `not_modified = false`.
 
 `succeeded` and `skipped` return normally. `partial_failure` also returns normally
 and logs an ERROR-level completion. Terminal `failed` runs throw a sanitized error

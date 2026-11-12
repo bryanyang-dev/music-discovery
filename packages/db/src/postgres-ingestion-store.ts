@@ -147,22 +147,49 @@ export function createPostgresIngestionStore(
         if (!run) {
           throw new IngestionError("DATABASE_ERROR");
         }
-        const [previous] = await query(
-          "select_existing_track",
-          transaction
-            .select()
-            .from(tracks)
-            .where(
-              and(
-                eq(tracks.sourceId, source.id),
-                eq(tracks.sourceUrl, incoming.sourceUrl),
-              ),
-            )
-            .for("update"),
-        );
+        const selectExistingTrack = () =>
+          query(
+            "select_existing_track",
+            transaction
+              .select()
+              .from(tracks)
+              .where(
+                and(
+                  eq(tracks.sourceId, source.id),
+                  eq(tracks.sourceUrl, incoming.sourceUrl),
+                ),
+              )
+              .for("update"),
+          );
+        let [previous] = await selectExistingTrack();
+        if (!previous) {
+          const [inserted] = await query(
+            "upsert_track",
+            transaction
+              .insert(tracks)
+              .values({
+                ...incoming,
+                sourceId: source.id,
+                metadataHash: metadataHash(incoming),
+              })
+              .onConflictDoNothing({
+                target: [tracks.sourceId, tracks.sourceUrl],
+              })
+              .returning({ id: tracks.id }),
+          );
+          if (inserted) {
+            return "inserted";
+          }
+          // A concurrent run inserted this URL after our first lookup.
+          // Lock and merge its committed row before reporting an existing track.
+          [previous] = await selectExistingTrack();
+          if (!previous) {
+            throw new IngestionError("DATABASE_ERROR");
+          }
+        }
         const merged = mergeTrack(incoming, previous);
         const hash = metadataHash(merged);
-        if (previous?.metadataHash === hash) {
+        if (previous.metadataHash === hash) {
           await query(
             "refresh_track_last_seen",
             transaction
@@ -172,7 +199,7 @@ export function createPostgresIngestionStore(
           );
           return "unchanged";
         }
-        if (previous && !sameTrackIdentity(previous, merged)) {
+        if (!sameTrackIdentity(previous, merged)) {
           await query(
             "invalidate_streaming_matches",
             transaction
@@ -183,20 +210,16 @@ export function createPostgresIngestionStore(
         await query(
           "upsert_track",
           transaction
-            .insert(tracks)
-            .values({ ...merged, sourceId: source.id, metadataHash: hash })
-            .onConflictDoUpdate({
-              target: [tracks.sourceId, tracks.sourceUrl],
-              set: {
-                ...merged,
-                metadataHash: hash,
-                lastSeenAt: sql`clock_timestamp()`,
-                updatedAt: sql`clock_timestamp()`,
-              },
-            }),
+            .update(tracks)
+            .set({
+              ...merged,
+              metadataHash: hash,
+              lastSeenAt: sql`clock_timestamp()`,
+              updatedAt: sql`clock_timestamp()`,
+            })
+            .where(eq(tracks.id, previous.id)),
         );
-        const outcome = previous ? "updated" : "inserted";
-        return outcome;
+        return "updated";
       });
     },
     async finishRun(source, result, validators) {
@@ -211,6 +234,13 @@ export function createPostgresIngestionStore(
                 status: result.status,
                 finishedAt: sql`clock_timestamp()`,
                 notModified: result.notModified,
+                found: result.found,
+                seen: result.seen,
+                inserted: result.inserted,
+                existing: result.existing,
+                updated: result.updated,
+                unchanged: result.unchanged,
+                rejected: result.rejected,
                 errors: result.errors.slice(0, MAX_RUN_ERROR_COUNT),
               })
               .where(activeRun(source, result.runId))

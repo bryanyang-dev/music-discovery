@@ -40,6 +40,8 @@ export interface SourceRecord extends SourceDefinition {
 
 export interface RunCounts {
   found: number;
+  seen: number;
+  existing: number;
   inserted: number;
   updated: number;
   unchanged: number;
@@ -65,7 +67,15 @@ export interface CacheValidators {
 }
 
 export function emptyCounts(): RunCounts {
-  return { found: 0, inserted: 0, updated: 0, unchanged: 0, rejected: 0 };
+  return {
+    found: 0,
+    seen: 0,
+    inserted: 0,
+    existing: 0,
+    updated: 0,
+    unchanged: 0,
+    rejected: 0,
+  };
 }
 
 export interface MatchingTrack {
