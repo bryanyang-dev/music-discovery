@@ -981,3 +981,24 @@ This section is updated as each task progresses, including verification evidence
 - Validation: `pnpm typecheck` passed; `pnpm test` 104/104 and 30/30 passed;
   `pnpm test:bundle` 4/4 passed; `pnpm web:build` passed (220 kB JS, 69 kB gzip);
   Vite dev server served the page and transformed `App.tsx`, then was stopped.
+
+## 2026-11-12 00:53 UTC — Implement Floor Session cassette UI (frontend only)
+
+- Implemented the "C5 · Anime" Floor Session design in `apps/web/src/floor-session/`
+  for both day and night themes, using the mockups' values as per-theme CSS custom
+  properties. No backend integration: tapes come from `sample-mixtapes.ts`.
+- Working interactions: play/pause, stop, next/previous (LCD and J-card highlight),
+  OPEN eject, loading a tape by drag-and-drop or click, and the lamp theme switch.
+- Decisions the mockup left open: the 1440x900 artboard scales to fit its container;
+  playback is visual only (no audio) and starts stopped on track 1; the volume slider
+  has no effect; an empty player hides the J-card and disables transport keys; tape
+  colours follow the weekday, with cassette shell shades derived by `color-mix`.
+- Player state is a pure reducer (`mixtape-session.ts`) with tests in `apps/web/test`,
+  now part of `pnpm test`. The web `tsconfig.json` includes `test` and Node types.
+- Validation: `pnpm typecheck` passed; `pnpm test` 116/116 and 30/30 passed;
+  `pnpm web:build` passed (237 kB JS, 20 kB CSS). A headless Chrome run against the
+  dev server (not committed) passed checks for the initial state, transport, drag
+  onto the player, drop on the floor, click-to-load, eject, lamp theme switch,
+  dark-preference start and scaling to 960x700, with no page errors; day and night
+  screenshots matched the mockups. `pnpm test:bundle` was not rerun: the Lambda
+  bundle is unaffected.

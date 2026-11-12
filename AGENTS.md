@@ -114,6 +114,9 @@ The goal is to become more effective at working in this repository with every co
   tracklists and incidental song mentions do not establish credited recommendations.
 - Preserve primary failures when cleanup fails. Bound cleanup, make cancellation
   ownership explicit, and never expose secrets in logs or errors.
+- In `apps/web`, keep state and formatting logic in plain `.ts` modules tested from
+  `apps/web/test`; components stay presentational. Put design values in per-theme
+  custom properties in the feature's stylesheet rather than inline styles.
 - Keep changes focused. Add regression tests for affected boundaries and failure paths;
   verify typechecking and relevant tests, plus the Lambda bundle when affected.
 - Report skipped checks and blockers honestly; record significant changes in `TASKS.md`.

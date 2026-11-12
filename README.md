@@ -5,8 +5,8 @@ review pages, logs parsed metadata, and upserts tracks into Supabase alongside
 source/run records. Results report inserted, updated, unchanged and rejected counts.
 Successful runs save feed validators; unchanged feeds skip review fetches and writes.
 Pitchfork Best New Tracks is currently the only implemented publisher adapter.
-A React + Vite frontend in `apps/web` is scaffolded for upcoming UI work; it does
-not read ingestion data yet.
+The React + Vite frontend in `apps/web` renders the "Floor Session" cassette-player
+scene from local sample data; it does not read ingestion data or play audio yet.
 
 ## Project structure
 
@@ -30,7 +30,19 @@ apps/web/
   tsconfig.json                       Browser/JSX TypeScript settings (excluded from root config)
   src/
     main.tsx                          React root mounting
-    App.tsx                           Placeholder app shell
+    App.tsx                           Theme state (day/night) and today's date
+    floor-session/
+      FloorSession.tsx                Scene composition, artboard scaling and session wiring
+      floor-session.css               Design values; per-theme custom properties
+      models.ts                       Track and mixtape data shapes
+      mixtape-session.ts              Player state reducer (load, eject, play, stop, track changes)
+      sample-mixtapes.ts              Placeholder week of tapes ending today
+      tape-date-labels.ts             Tape date labels (English, Japanese, spoken)
+      use-stage-scale.ts              Fits the 1440x900 artboard to its container
+      use-tape-drag.ts                Drag a boxed tape onto the player; click also loads
+      CassettePlayer.tsx, Cassette.tsx, JCard.tsx, TapeBox.tsx, ThemeLamp.tsx
+      Headphones.tsx, RoomAtmosphere.tsx, FloorDecor.tsx
+  test/                               Session, sample data and date label tests
 packages/
   shared/
     src/
@@ -220,6 +232,25 @@ only on loopback hosts. They require an already-running local database. The norm
 DB integration command does not load `.env`; live previews load `.env` for
 read-only source lookup, while offline fixtures do not load credentials.
 Hosted track-ingestion integration remains unverified.
+
+## Web frontend
+
+`apps/web` implements the "C5 · Anime" Floor Session design (day and night): a
+tatami floor with a portable cassette player. Each day's recommendations are one
+dated tape; the J-card lists its tracks and the "THIS WEEK" box holds the last
+seven days. Run it with `pnpm web:dev`.
+
+- Load a tape by dragging it from the box onto the player, or by clicking it
+  (keyboard: focus it and press Enter). OPEN ejects the tape back to the box.
+- Play/pause, stop, next and previous update the LCD and the highlighted track.
+  Playback is visual only and the volume slider controls nothing: there is no
+  audio source yet.
+- The paper lamp switches theme; the first load follows the system light/dark
+  setting. Animations stop when the system asks for reduced motion.
+- The scene is a fixed 1440x900 artboard scaled as a whole to fit the window; there
+  is no separate small-screen layout.
+- Tapes and tracks are placeholders from `sample-mixtapes.ts`. No backend, database
+  or network calls exist except loading the two Google Fonts in `index.html`.
 
 ## Documentation
 
