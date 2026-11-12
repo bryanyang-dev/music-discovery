@@ -105,14 +105,16 @@ test("incomplete arguments and an incompatible function fail before uploading", 
   assert.equal(state.calls().length, 1);
 });
 
-test("no arguments selects musicRssFetcher in the verified account and region", (context) => {
-  const state = fixture(context);
-  const result = state.run([]);
-  assert.equal(result.status, 0, result.stderr);
-  for (const { args } of state.calls().filter((call) => call.command === "aws")) {
-    assert.equal(args[args.indexOf("--function-name") + 1], "arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher");
-    assert.equal(args[args.indexOf("--region") + 1], "us-east-2");
-    assert.equal(args[args.indexOf("--profile") + 1], "music-discovery");
+test("default and explicit ingestion selectors target musicRssFetcher in the verified account and region", (context) => {
+  for (const args of [[], ["--app", "ingestion"]]) {
+    const state = fixture(context);
+    const result = state.run(args);
+    assert.equal(result.status, 0, result.stderr);
+    for (const { args } of state.calls().filter((call) => call.command === "aws")) {
+      assert.equal(args[args.indexOf("--function-name") + 1], "arn:aws:lambda:us-east-2:783161622181:function:musicRssFetcher");
+      assert.equal(args[args.indexOf("--region") + 1], "us-east-2");
+      assert.equal(args[args.indexOf("--profile") + 1], "music-discovery");
+    }
   }
 });
 

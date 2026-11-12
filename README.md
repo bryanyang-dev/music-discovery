@@ -175,9 +175,9 @@ access to Pitchfork and the database. Other settings, including concurrency,
 triggers, log retention and destinations, are maintained in the console.
 
 ```sh
-pnpm upload:lambda
+pnpm upload:ingestion
 # Override the default target/region/profile:
-pnpm upload:lambda musicRssFetcher us-east-2 music-discovery
+pnpm upload:ingestion musicRssFetcher us-east-2 music-discovery
 ```
 
 The default target is
@@ -254,11 +254,28 @@ pnpm upload:matcher <function-name> <region> [aws-profile]
 
 The upload runs the same checks and packages the selected app's bundle and CA.
 It changes code only; it does not set Spotify credentials, create triggers or invoke
-Lambda. Existing `pnpm upload:lambda` still targets ingestion by default. The matcher
+Lambda. `pnpm upload:ingestion` selects ingestion; `pnpm upload:matcher` selects
+the matcher. The matcher
 requires outbound HTTPS to `accounts.spotify.com`, `api.spotify.com` and database
 access. There is no automatic ingestion-to-matcher trigger or backfill yet. This
 implementation has offline coverage; live Spotify access and hosted writes remain
 unverified with your credentials.
+
+## Uploading both Lambdas
+
+`pnpm upload:lambda` uploads both applications, ingestion first and matcher second.
+Both function names and their shared region are required; the AWS profile is optional:
+
+```sh
+pnpm upload:lambda <ingestion-function> <matcher-function> <region> [aws-profile]
+```
+
+There is no default target for the combined command. It reuses each individual
+upload's validation, checks, packaging and revision protection. If an upload fails,
+the command stops; a successful earlier upload remains deployed. This is a
+sequential release, with no rollback. Configure each function in the console
+before authorizing uploads. Use `upload:ingestion` or `upload:matcher` to release
+one app independently.
 
 ## Development
 

@@ -1,5 +1,20 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 05:58 UTC — Clarify individual and combined Lambda upload commands
+
+- Added `pnpm upload:ingestion` with an explicit ingestion selector. Changed
+  `pnpm upload:lambda` to upload ingestion and matcher in sequence, requiring
+  `<ingestion-function> <matcher-function> <region> [aws-profile]`. It validates
+  arguments before starting, rejects identical target strings and stops on failure;
+  an earlier successful upload is not rolled back. Each app reuses the existing
+  checked, revision-protected upload flow. `upload:matcher` remains available.
+- Updated README, operations, infrastructure status and AGENTS.md to use the
+  explicit ingestion command and document combined-release arguments/behavior.
+- Validation: TypeScript checks, mocked upload tests and `git diff --check` passed.
+  Covered explicit ingestion selection, combined argument/profile forwarding,
+  invalid targets and failure propagation. No AWS upload or installation occurred;
+  Lambda source/bundles are unchanged, so bundle tests were not rerun.
+
 ## 2026-11-12 05:35 UTC — Add independent Spotify track matcher Lambda
 
 - Added `apps/track-matcher` alongside ingestion, using root TypeScript/test/build

@@ -9,7 +9,7 @@ Use Node.js 24, ZIP packaging and handler `index.handler`; a 300-second timeout 
 recommended. Confirm network access to Pitchfork and the database, database
 credentials/grants/RLS, and CloudWatch logging permissions on the execution role.
 
-Use `pnpm upload:lambda` for tested code/CA uploads. It leaves console configuration
+Use `pnpm upload:ingestion` for tested ingestion code/CA uploads. It leaves console configuration
 unchanged. `pnpm build:lambda` builds locally only. Neither command uploads `.env`
 or copies local environment values into Lambda. After uploading, test `{"sourceKey":"pitchfork_best_new_tracks"}` in the
 console and inspect that request's logs. See [README](../README.md#deployment).
@@ -29,7 +29,7 @@ alarms, retention or concurrency. Check those settings in the console as needed.
 
 The console-created track matcher is a separate deployment. Use
 `pnpm upload:matcher <function-name> <region> [aws-profile]` only for an authorized
-release, with Node.js 24 and `index.handler` configured in that function. Both
+release, with Node.js 24 and `index.handler` configured in that function. Both individual
 upload commands run the full offline checks and bundle smoke tests, then package
 only the selected app. See [matcher configuration and payload](../README.md#track-matcher-lambda)
 for Spotify variables, timeout, database permissions and example invocation.
@@ -53,6 +53,12 @@ failure fails the invocation. An ingestion role without DELETE/RLS access on
 `track_streaming_matches` will fail identity-changing upserts; provision that access
 before releasing the updated ingestion bundle. Live Spotify/hosted matcher writes
 have not been verified by offline tests.
+
+`pnpm upload:lambda <ingestion-function> <matcher-function> <region> [aws-profile]`
+runs the ingestion upload and then the matcher upload, using the shared region and
+optional profile for both. It requires explicit, distinct targets, has no default,
+and stops on the first failure. An earlier successful upload is not rolled back.
+Each individual upload runs its release checks before updating that function.
 
 ## Source selection and registration
 
