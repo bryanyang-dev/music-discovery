@@ -1,5 +1,22 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 21:18 UTC — Match Spotify bonus track release labels
+
+- Matched `Born Again` by Star Moles to Spotify's `Born Again - Bonus Track`.
+  Title comparison now ignores a trailing `Bonus Track` label after a spaced
+  hyphen/en dash/em dash or in spaced parentheses/brackets on either title.
+- Preserved original Spotify metadata, complete artist-set comparison, meaningful
+  performance/mix suffixes and ambiguity across distinct qualifying recording IDs.
+- Added regression coverage for the reported recording, delimiter/case/whitespace
+  variants, artist mismatches, version labels, title boundaries and ambiguity.
+  Updated the matcher guide and repository guidance.
+- Validation: 203 offline tests, root/web typechecks, both Lambda builds, six
+  bundle tests, formatting and diff checks passed using existing tool binaries.
+  Initial pnpm script attempts unexpectedly tried automatic installation and failed
+  on symlinked dependencies; no installation completed. Refined guidance to cover
+  symlinked dependencies and direct use of existing binaries. No deployment, live
+  Spotify requests or database writes were performed.
+
 ## 2026-11-12 20:56 UTC — Log exact Spotify catalog query parameters
 
 - Added `queryParams` to catalog `spotify_request` events, read directly from the

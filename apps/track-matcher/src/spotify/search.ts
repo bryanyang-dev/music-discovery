@@ -26,6 +26,18 @@ function normalize(text: string): string {
     .trim();
 }
 
+function normalizeTitle(title: string): string {
+  const normalized = normalize(title);
+  // A release label does not identify a different performance or mix.
+  const withoutBonusLabel = normalized
+    .replace(
+      /(?: [-–—] bonus track| \( *bonus track *\)| \[ *bonus track *\])$/u,
+      "",
+    )
+    .trim();
+  return withoutBonusLabel || normalized;
+}
+
 function parseRecording(value: unknown): Recording {
   if (value === null || typeof value !== "object")
     throw new IngestionError("SPOTIFY_REQUEST_FAILED");
@@ -128,7 +140,7 @@ export async function searchSpotify(
         ...new Set(recording.artists.map((artist) => normalize(artist.name))),
       ].sort();
       if (
-        normalize(recording.name) === normalize(track.trackTitle) &&
+        normalizeTitle(recording.name) === normalizeTitle(track.trackTitle) &&
         JSON.stringify(artists) === JSON.stringify(expectedArtists)
       ) {
         candidates.set(recording.id, recording);

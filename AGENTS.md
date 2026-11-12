@@ -108,6 +108,9 @@ The goal is to become more effective at working in this repository with every co
 - Evaluate new publisher feeds as posts before assuming one track per item. Treat
   intentional non-track skips separately from extraction failures; writers, tags,
   tracklists and incidental song mentions do not establish credited recommendations.
+- Keep Spotify title normalization separate from artist normalization. Ignore only
+  explicitly supported release labels; preserve performance/mix version labels,
+  original provider metadata and ambiguity across distinct provider IDs.
 - Route Spotify token and catalog requests through `apps/track-matcher/src/spotify/http.ts`
   so every call has paired logs. Log response contents through the Spotify response
   sanitizer's public-field allowlist and size limits; exclude credentials, arbitrary
@@ -128,6 +131,7 @@ The goal is to become more effective at working in this repository with every co
   not the word `private`, which also appears in macOS `/private/tmp` worktree paths.
 - Never install dependencies, apply remote migrations, or deploy infrastructure without
   the required explicit authorization. In a worktree without dependencies, pnpm 12
-  can automatically install before running scripts such as `pnpm format`; obtain
-  install approval before running pnpm scripts there. Keep credentials and generated
-  builds out of Git.
+  can automatically install before running scripts such as `pnpm format`, even
+  with a symlinked `node_modules`. Obtain install approval before running pnpm
+  scripts there, or invoke verified existing tool binaries directly for checks
+  and formatting. Keep credentials and generated builds out of Git.

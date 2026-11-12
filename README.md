@@ -243,7 +243,11 @@ No playback token or audio URL is returned.
 The matcher uses Spotify's [client credentials flow](https://developer.spotify.com/documentation/web-api/tutorials/client-credentials-flow)
 and [catalog search](https://developer.spotify.com/documentation/web-api/reference/search).
 It compares Unicode-normalized, case-insensitive titles and complete artist sets,
-collapsing whitespace. Punctuation, accents and version suffixes remain meaningful.
+collapsing whitespace. A trailing `Bonus Track` release label is ignored on either
+title when separated by a spaced hyphen/en dash/em dash or enclosed in spaced
+parentheses/brackets (for example, `Born Again - Bonus Track` matches `Born Again`).
+The original Spotify title is retained in match metadata. Other punctuation,
+accents and version suffixes such as `Live` or `Remix` remain meaningful.
 It does not choose the first search hit or infer featured-artist credits. Distinct
 qualifying provider IDs are ambiguous, including album/single duplicates. Search
 is capped at five pages of ten results; an incomplete search is also ambiguous.
