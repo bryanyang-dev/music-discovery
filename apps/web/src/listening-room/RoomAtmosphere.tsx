@@ -21,12 +21,47 @@ export function RoomAtmosphere() {
           <div key={pane} className="window-light__pane" />
         ))}
       </div>
-      <svg className="leaf-shadows" width="240" height="280" viewBox="0 0 240 280">
-        <ellipse cx="60" cy="60" rx="52" ry="16" transform="rotate(-35 60 60)" />
-        <ellipse cx="150" cy="70" rx="58" ry="17" transform="rotate(20 150 70)" />
-        <ellipse cx="100" cy="150" rx="60" ry="18" transform="rotate(-60 100 150)" />
-        <ellipse cx="180" cy="180" rx="50" ry="15" transform="rotate(48 180 180)" />
-        <ellipse cx="70" cy="230" rx="46" ry="14" transform="rotate(-18 70 230)" />
+      <svg
+        className="leaf-shadows"
+        width="240"
+        height="280"
+        viewBox="0 0 240 280"
+      >
+        <ellipse
+          cx="60"
+          cy="60"
+          rx="52"
+          ry="16"
+          transform="rotate(-35 60 60)"
+        />
+        <ellipse
+          cx="150"
+          cy="70"
+          rx="58"
+          ry="17"
+          transform="rotate(20 150 70)"
+        />
+        <ellipse
+          cx="100"
+          cy="150"
+          rx="60"
+          ry="18"
+          transform="rotate(-60 100 150)"
+        />
+        <ellipse
+          cx="180"
+          cy="180"
+          rx="50"
+          ry="15"
+          transform="rotate(48 180 180)"
+        />
+        <ellipse
+          cx="70"
+          cy="230"
+          rx="46"
+          ry="14"
+          transform="rotate(-18 70 230)"
+        />
       </svg>
 
       <div className="day-only">

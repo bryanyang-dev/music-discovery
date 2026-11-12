@@ -1,8 +1,15 @@
-import type { CacheValidators, FeedEntry, SourceDefinition, TrackInput } from "@music-discovery/shared";
+import type {
+  CacheValidators,
+  FeedEntry,
+  SourceDefinition,
+  TrackInput,
+} from "@music-discovery/shared";
 import type { HttpOptions, FeedResponse } from "./models.ts";
 
 export type FeedFetcher = (
-  url: string, validators: CacheValidators, options?: HttpOptions,
+  url: string,
+  validators: CacheValidators,
+  options?: HttpOptions,
 ) => Promise<FeedResponse>;
 
 export interface SourceAdapter {

@@ -5,21 +5,35 @@ import { FloorItem } from "./FloorItem.tsx";
 import { FloorTape, floorCassetteHalfSizePx } from "./FloorTape.tsx";
 import { Headphones } from "./Headphones.tsx";
 import { JCard } from "./JCard.tsx";
-import { createMixtapeSession, findLoadedTape, reduceMixtapeSession } from "./mixtape-session.ts";
+import {
+  createMixtapeSession,
+  findLoadedTape,
+  reduceMixtapeSession,
+} from "./mixtape-session.ts";
 import type { FloorPosition } from "./models.ts";
 import { RoomAtmosphere } from "./RoomAtmosphere.tsx";
 import { createSampleWeek } from "./sample-mixtapes.ts";
 import { TapeBox } from "./TapeBox.tsx";
 import { ThemeLamp, type FloorTheme } from "./ThemeLamp.tsx";
-import { stageHeightPx, stageWidthPx, useStageScale } from "./use-stage-scale.ts";
+import {
+  stageHeightPx,
+  stageWidthPx,
+  useStageScale,
+} from "./use-stage-scale.ts";
 import { useTapeDrag, type TapeDropTarget } from "./use-tape-drag.ts";
 import "./listening-room.css";
 
 /** Keeps a dropped cassette fully on the artboard so it can always be picked up again. */
 function clampToFloor(center: FloorPosition): FloorPosition {
   return {
-    x: Math.min(Math.max(center.x, floorCassetteHalfSizePx.x), stageWidthPx - floorCassetteHalfSizePx.x),
-    y: Math.min(Math.max(center.y, floorCassetteHalfSizePx.y), stageHeightPx - floorCassetteHalfSizePx.y),
+    x: Math.min(
+      Math.max(center.x, floorCassetteHalfSizePx.x),
+      stageWidthPx - floorCassetteHalfSizePx.x,
+    ),
+    y: Math.min(
+      Math.max(center.y, floorCassetteHalfSizePx.y),
+      stageHeightPx - floorCassetteHalfSizePx.y,
+    ),
   };
 }
 
@@ -31,7 +45,11 @@ interface ListeningRoomProps {
 }
 
 /** The whole scene: a tatami floor with the cassette player, this week's tapes and the room around them. */
-export function ListeningRoom({ theme, onToggleTheme, today }: ListeningRoomProps) {
+export function ListeningRoom({
+  theme,
+  onToggleTheme,
+  today,
+}: ListeningRoomProps) {
   const [session, dispatch] = useReducer(reduceMixtapeSession, today, (date) =>
     createMixtapeSession(createSampleWeek(date)),
   );
@@ -44,15 +62,22 @@ export function ListeningRoom({ theme, onToggleTheme, today }: ListeningRoomProp
   const loadTape = useCallback((tapeDate: string) => {
     dispatch({ type: "loadTape", date: tapeDate });
   }, []);
-  const dropTape = useCallback((tapeDate: string, target: TapeDropTarget, center: FloorPosition) => {
-    if (target === "player") {
-      dispatch({ type: "loadTape", date: tapeDate });
-    } else if (target === "box") {
-      dispatch({ type: "returnTapeToBox", date: tapeDate });
-    } else {
-      dispatch({ type: "placeTapeOnFloor", date: tapeDate, position: clampToFloor(center) });
-    }
-  }, []);
+  const dropTape = useCallback(
+    (tapeDate: string, target: TapeDropTarget, center: FloorPosition) => {
+      if (target === "player") {
+        dispatch({ type: "loadTape", date: tapeDate });
+      } else if (target === "box") {
+        dispatch({ type: "returnTapeToBox", date: tapeDate });
+      } else {
+        dispatch({
+          type: "placeTapeOnFloor",
+          date: tapeDate,
+          position: clampToFloor(center),
+        });
+      }
+    },
+    [],
+  );
   const { drag, getTapeHandlers } = useTapeDrag({
     stageRef,
     playerRef,
@@ -62,15 +87,22 @@ export function ListeningRoom({ theme, onToggleTheme, today }: ListeningRoomProp
   });
 
   const loadedTape = findLoadedTape(session);
-  const draggedTape = drag ? (session.tapes.find((tape) => tape.date === drag.tapeDate) ?? null) : null;
+  const draggedTape = drag
+    ? (session.tapes.find((tape) => tape.date === drag.tapeDate) ?? null)
+    : null;
   const floorTapeDates = Object.keys(session.floorTapes);
 
   return (
     <div ref={viewportRef} className="floor-viewport" data-theme={theme}>
-      <div className="floor-frame" style={{ width: stageWidthPx * scale, height: stageHeightPx * scale }}>
+      <div
+        className="floor-frame"
+        style={{ width: stageWidthPx * scale, height: stageHeightPx * scale }}
+      >
         <main
           ref={stageRef}
-          className={session.playing ? "floor-stage floor-stage--playing" : "floor-stage"}
+          className={
+            session.playing ? "floor-stage floor-stage--playing" : "floor-stage"
+          }
           style={{ transform: `scale(${scale})` }}
         >
           <h1 className="visually-hidden">Daily Mixtape</h1>
@@ -101,7 +133,9 @@ export function ListeningRoom({ theme, onToggleTheme, today }: ListeningRoomProp
 
           {/* Stays mounted while the player is empty so the card reappears where it was left. */}
           <FloorItem stageRef={stageRef}>
-            {loadedTape ? <JCard tape={loadedTape} trackIndex={session.trackIndex} /> : null}
+            {loadedTape ? (
+              <JCard tape={loadedTape} trackIndex={session.trackIndex} />
+            ) : null}
           </FloorItem>
 
           <FloorItem stageRef={stageRef}>
@@ -116,7 +150,9 @@ export function ListeningRoom({ theme, onToggleTheme, today }: ListeningRoomProp
             <Sparkle owner="box" />
           </FloorItem>
           <FloorItem stageRef={stageRef}>
-            <div className="floor-pill floor-hint">Drop a tape on the player to load it</div>
+            <div className="floor-pill floor-hint">
+              Drop a tape on the player to load it
+            </div>
           </FloorItem>
 
           <FloorItem stageRef={stageRef}>
@@ -134,7 +170,14 @@ export function ListeningRoom({ theme, onToggleTheme, today }: ListeningRoomProp
             // While this tape is being carried, its button stays mounted (it holds the pointer) but hidden.
             const isCarried = drag?.tapeDate === tape.date;
             return (
-              <div key={tape.date} className={isCarried ? "floor-tape-slot floor-tape-slot--carried" : "floor-tape-slot"}>
+              <div
+                key={tape.date}
+                className={
+                  isCarried
+                    ? "floor-tape-slot floor-tape-slot--carried"
+                    : "floor-tape-slot"
+                }
+              >
                 <FloorTape
                   tape={tape}
                   center={center}
@@ -145,7 +188,9 @@ export function ListeningRoom({ theme, onToggleTheme, today }: ListeningRoomProp
             );
           })}
 
-          {drag && draggedTape ? <FloorTape tape={draggedTape} center={drag.center} lifted={true} /> : null}
+          {drag && draggedTape ? (
+            <FloorTape tape={draggedTape} center={drag.center} lifted={true} />
+          ) : null}
         </main>
       </div>
     </div>

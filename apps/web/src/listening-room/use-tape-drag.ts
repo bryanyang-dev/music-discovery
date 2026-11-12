@@ -41,22 +41,38 @@ interface UseTapeDragOptions {
   readonly playerRef: RefObject<HTMLElement | null>;
   readonly boxRef: RefObject<HTMLElement | null>;
   /** A tape was dragged and released; `center` is where the cassette's centre ended up. */
-  readonly onDropTape: (tapeDate: string, target: TapeDropTarget, center: FloorPosition) => void;
+  readonly onDropTape: (
+    tapeDate: string,
+    target: TapeDropTarget,
+    center: FloorPosition,
+  ) => void;
   /** A tape was clicked or activated from the keyboard without dragging. */
   readonly onActivateTape: (tapeDate: string) => void;
 }
 
 interface UseTapeDragResult {
   readonly drag: TapeDrag | null;
-  readonly getTapeHandlers: (tapeDate: string, origin: TapeOrigin) => TapeDragHandlers;
+  readonly getTapeHandlers: (
+    tapeDate: string,
+    origin: TapeOrigin,
+  ) => TapeDragHandlers;
 }
 
-function containsPoint(element: HTMLElement | null, clientX: number, clientY: number): boolean {
+function containsPoint(
+  element: HTMLElement | null,
+  clientX: number,
+  clientY: number,
+): boolean {
   if (!element) {
     return false;
   }
   const rect = element.getBoundingClientRect();
-  return clientX >= rect.left && clientX <= rect.right && clientY >= rect.top && clientY <= rect.bottom;
+  return (
+    clientX >= rect.left &&
+    clientX <= rect.right &&
+    clientY >= rect.top &&
+    clientY <= rect.bottom
+  );
 }
 
 /**
@@ -78,7 +94,11 @@ export function useTapeDrag({
     return stage.getBoundingClientRect().width / stageWidthPx;
   }
 
-  function tapeCenter(press: PendingPress, clientX: number, clientY: number): FloorPosition | null {
+  function tapeCenter(
+    press: PendingPress,
+    clientX: number,
+    clientY: number,
+  ): FloorPosition | null {
     const stage = stageRef.current;
     if (!stage) {
       return null;
@@ -92,7 +112,10 @@ export function useTapeDrag({
     setDrag(null);
   }
 
-  function getTapeHandlers(tapeDate: string, origin: TapeOrigin): TapeDragHandlers {
+  function getTapeHandlers(
+    tapeDate: string,
+    origin: TapeOrigin,
+  ): TapeDragHandlers {
     return {
       onPointerDown(event) {
         suppressNextClick.current = false;
@@ -129,7 +152,10 @@ export function useTapeDrag({
           return;
         }
         if (!press.dragged) {
-          const travelPx = Math.hypot(event.clientX - press.startX, event.clientY - press.startY);
+          const travelPx = Math.hypot(
+            event.clientX - press.startX,
+            event.clientY - press.startY,
+          );
           if (travelPx < dragStartThresholdPx) {
             return;
           }
@@ -158,7 +184,9 @@ export function useTapeDrag({
         let target: TapeDropTarget = "floor";
         if (containsPoint(playerRef.current, event.clientX, event.clientY)) {
           target = "player";
-        } else if (containsPoint(boxRef.current, event.clientX, event.clientY)) {
+        } else if (
+          containsPoint(boxRef.current, event.clientX, event.clientY)
+        ) {
           target = "box";
         }
         onDropTape(press.tapeDate, target, center);

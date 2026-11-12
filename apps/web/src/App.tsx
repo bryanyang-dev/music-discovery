@@ -3,7 +3,9 @@ import { ListeningRoom } from "./listening-room/ListeningRoom.tsx";
 import type { FloorTheme } from "./listening-room/ThemeLamp.tsx";
 
 function preferredTheme(): FloorTheme {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "day";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "night"
+    : "day";
 }
 
 export function App() {
@@ -13,7 +15,9 @@ export function App() {
   return (
     <ListeningRoom
       theme={theme}
-      onToggleTheme={() => setTheme((current) => (current === "day" ? "night" : "day"))}
+      onToggleTheme={() =>
+        setTheme((current) => (current === "day" ? "night" : "day"))
+      }
       today={today}
     />
   );

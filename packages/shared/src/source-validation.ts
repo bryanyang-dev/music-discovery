@@ -8,7 +8,9 @@ export function validateSourceKey(value: unknown): string {
   return value;
 }
 
-export function validateSourceDefinition(source: SourceDefinition): SourceDefinition {
+export function validateSourceDefinition(
+  source: SourceDefinition,
+): SourceDefinition {
   validateSourceKey(source.key);
   for (const value of [source.name, source.category]) {
     validateSourceKey(value);
@@ -19,8 +21,19 @@ export function validateSourceDefinition(source: SourceDefinition): SourceDefini
   } catch {
     throw new IngestionError("INVALID_SOURCE");
   }
-  if (url.protocol !== "https:" || url.username || url.password || url.port || url.hash) {
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.hash
+  ) {
     throw new IngestionError("INVALID_SOURCE");
   }
-  return { key: source.key, name: source.name, category: source.category, feedUrl: url.href };
+  return {
+    key: source.key,
+    name: source.name,
+    category: source.category,
+    feedUrl: url.href,
+  };
 }

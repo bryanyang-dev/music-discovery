@@ -23,7 +23,9 @@ function responseSummary(result: unknown): Record<string, unknown> {
     const count = (result as unknown as { count?: unknown }).count;
     return {
       rowCount: result.length,
-      ...(typeof count === "number" && Number.isFinite(count) ? { affectedRowCount: count } : {}),
+      ...(typeof count === "number" && Number.isFinite(count)
+        ? { affectedRowCount: count }
+        : {}),
     };
   }
   if (result === "inserted" || result === "updated" || result === "unchanged") {
@@ -35,12 +37,20 @@ function responseSummary(result: unknown): Record<string, unknown> {
 export function createDatabaseCallLogger(options: DatabaseLoggingOptions = {}) {
   const logger = options.logger ?? console;
 
-  function emit(level: "INFO" | "ERROR", event: string, details: Record<string, unknown>): void {
+  function emit(
+    level: "INFO" | "ERROR",
+    event: string,
+    details: Record<string, unknown>,
+  ): void {
     // Only operational metadata and allowlisted sanitized response fields are serialized.
     try {
       const message = JSON.stringify({
-        event, level, requestId: options.requestId ?? null,
-        ...(options.sourceKey === undefined ? {} : { sourceKey: options.sourceKey }),
+        event,
+        level,
+        requestId: options.requestId ?? null,
+        ...(options.sourceKey === undefined
+          ? {}
+          : { sourceKey: options.sourceKey }),
         ...details,
       });
       if (level === "ERROR") {
@@ -65,24 +75,38 @@ export function createDatabaseCallLogger(options: DatabaseLoggingOptions = {}) {
       const result = await execute(callId);
       let response: Record<string, unknown>;
       try {
-        response = { ...responseSummary(result), ...sanitizeDatabaseResponse(call.operation, result) };
+        response = {
+          ...responseSummary(result),
+          ...sanitizeDatabaseResponse(call.operation, result),
+        };
       } catch {
-        response = { response: "[response unavailable]", responseTruncated: true };
+        response = {
+          response: "[response unavailable]",
+          responseTruncated: true,
+        };
       }
       emit("INFO", "database_response", {
-        ...details, status: "succeeded", durationMs: performance.now() - startedAt,
+        ...details,
+        status: "succeeded",
+        durationMs: performance.now() - startedAt,
         ...response,
       });
       return result;
     } catch (error) {
       const failure = databaseError(error);
       emit("ERROR", "database_response", {
-        ...details, status: "failed", durationMs: performance.now() - startedAt,
-        code: failure.code, message: failure.message,
+        ...details,
+        status: "failed",
+        durationMs: performance.now() - startedAt,
+        code: failure.code,
+        message: failure.message,
       });
       throw error;
     }
   };
 }
 
-export type QueryExecutor = <Result>(operation: string, query: PromiseLike<Result>) => Promise<Result>;
+export type QueryExecutor = <Result>(
+  operation: string,
+  query: PromiseLike<Result>,
+) => Promise<Result>;

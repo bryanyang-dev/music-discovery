@@ -12,8 +12,15 @@ function toIsoDate(date: Date): string {
 
 function createSampleTracks(): Track[] {
   const tracks: Track[] = [];
-  for (let trackNumber = 1; trackNumber <= sampleTracksPerTape; trackNumber += 1) {
-    tracks.push({ title: `Sample track ${trackNumber}`, artist: `Sample artist ${trackNumber}` });
+  for (
+    let trackNumber = 1;
+    trackNumber <= sampleTracksPerTape;
+    trackNumber += 1
+  ) {
+    tracks.push({
+      title: `Sample track ${trackNumber}`,
+      artist: `Sample artist ${trackNumber}`,
+    });
   }
   return tracks;
 }
@@ -25,7 +32,11 @@ function createSampleTracks(): Track[] {
 export function createSampleWeek(today: Date): Mixtape[] {
   const tapes: Mixtape[] = [];
   for (let daysAgo = 0; daysAgo < sampleWeekLengthDays; daysAgo += 1) {
-    const day = new Date(today.getFullYear(), today.getMonth(), today.getDate() - daysAgo);
+    const day = new Date(
+      today.getFullYear(),
+      today.getMonth(),
+      today.getDate() - daysAgo,
+    );
     tapes.push({ date: toIsoDate(day), tracks: createSampleTracks() });
   }
   return tapes;

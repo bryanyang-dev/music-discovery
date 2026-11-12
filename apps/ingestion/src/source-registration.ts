@@ -1,8 +1,16 @@
 import { connectDatabase } from "@music-discovery/db";
 import { getSourceAdapter } from "@music-discovery/rss";
-import { errorCode, IngestionError, toIngestionError, validateSourceDefinition, type SourceDefinition, type SourceRegistry } from "@music-discovery/shared";
+import {
+  errorCode,
+  IngestionError,
+  toIngestionError,
+  validateSourceDefinition,
+  type SourceDefinition,
+  type SourceRegistry,
+} from "@music-discovery/shared";
 
-export const SOURCE_ADD_USAGE = "pnpm sources:add --key <key> --name <publisher> --category <category> --feed-url <https-url>";
+export const SOURCE_ADD_USAGE =
+  "pnpm sources:add --key <key> --name <publisher> --category <category> --feed-url <https-url>";
 
 export function parseSourceArgs(args: string[]): SourceDefinition {
   const values = new Map<string, string>();
@@ -10,7 +18,12 @@ export function parseSourceArgs(args: string[]): SourceDefinition {
   for (let index = 0; index < args.length; index += 2) {
     const flag = args[index]!;
     const value = args[index + 1];
-    if (!flags.includes(flag) || values.has(flag) || !value || value.startsWith("--")) {
+    if (
+      !flags.includes(flag) ||
+      values.has(flag) ||
+      !value ||
+      value.startsWith("--")
+    ) {
       throw new IngestionError("INVALID_SOURCE");
     }
     values.set(flag, value);
@@ -30,7 +43,10 @@ type RegistryConnection = { sources: SourceRegistry; close(): Promise<void> };
 export async function addIngestionSource(
   args: string[],
   databaseUrl: string | undefined,
-  connect: (url: string, options: { sourceKey: string }) => RegistryConnection = connectDatabase,
+  connect: (
+    url: string,
+    options: { sourceKey: string },
+  ) => RegistryConnection = connectDatabase,
 ): Promise<string> {
   const source = parseSourceArgs(args);
   if (!databaseUrl) {

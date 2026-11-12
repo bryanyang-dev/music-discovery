@@ -2,7 +2,11 @@ import { IngestionError } from "./errors.ts";
 
 export function httpUrl(value: string, base?: string): string {
   const url = new URL(value, base);
-  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) {
+  if (
+    !["https:", "http:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  ) {
     throw new IngestionError("UNSAFE_URL");
   }
   url.hash = "";

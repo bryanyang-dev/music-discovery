@@ -12,16 +12,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "allowImportingTsExtensions": true,
-    "types": [
-      "node"
-    ]
+    "types": ["node"]
   },
-  "include": [
-    "apps/**/*.ts",
-    "packages/**/*.ts",
-    "drizzle*.config.ts"
-  ],
-  "exclude": [
-    "apps/web"
-  ]
+  "include": ["apps/**/*.ts", "packages/**/*.ts", "drizzle*.config.ts"],
+  "exclude": ["apps/web"]
 }

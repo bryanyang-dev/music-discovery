@@ -50,14 +50,22 @@ export function TapeBox({
           <button
             key={tape.date}
             type="button"
-            className={isDragging ? "tape-box__tape tape-box__tape--lifted" : "tape-box__tape"}
+            className={
+              isDragging
+                ? "tape-box__tape tape-box__tape--lifted"
+                : "tape-box__tape"
+            }
             data-weekday={labels.weekdayIndex}
             aria-label={`Load tape, ${labels.spokenDate}`}
             {...getTapeHandlers(tape.date)}
           >
             <span className="tape-box__tape-label">
               <span>{labels.tapeLabel}</span>
-              <span lang="ja" aria-hidden="true" className="tape-box__tape-kanji">
+              <span
+                lang="ja"
+                aria-hidden="true"
+                className="tape-box__tape-kanji"
+              >
                 {labels.weekdayKanji}
               </span>
             </span>

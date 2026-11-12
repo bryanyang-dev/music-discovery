@@ -17,7 +17,11 @@ export interface MixtapeSession {
 export type MixtapeSessionAction =
   | { readonly type: "loadTape"; readonly date: string }
   | { readonly type: "ejectTape" }
-  | { readonly type: "placeTapeOnFloor"; readonly date: string; readonly position: FloorPosition }
+  | {
+      readonly type: "placeTapeOnFloor";
+      readonly date: string;
+      readonly position: FloorPosition;
+    }
   | { readonly type: "returnTapeToBox"; readonly date: string }
   | { readonly type: "togglePlayback" }
   | { readonly type: "stop" }
@@ -25,7 +29,9 @@ export type MixtapeSessionAction =
   | { readonly type: "previousTrack" };
 
 /** Starts with the newest tape (the first one) in the player, stopped, and the rest in the box. */
-export function createMixtapeSession(tapes: readonly Mixtape[]): MixtapeSession {
+export function createMixtapeSession(
+  tapes: readonly Mixtape[],
+): MixtapeSession {
   return {
     tapes,
     loadedTapeDate: tapes[0]?.date ?? null,
@@ -39,7 +45,9 @@ export function findLoadedTape(session: MixtapeSession): Mixtape | null {
   if (session.loadedTapeDate === null) {
     return null;
   }
-  return session.tapes.find((tape) => tape.date === session.loadedTapeDate) ?? null;
+  return (
+    session.tapes.find((tape) => tape.date === session.loadedTapeDate) ?? null
+  );
 }
 
 function isKnownTape(session: MixtapeSession, date: string): boolean {
@@ -63,17 +71,26 @@ function moveTrack(session: MixtapeSession, step: number): MixtapeSession {
     return session;
   }
   const lastTrackIndex = tape.tracks.length - 1;
-  const trackIndex = Math.min(Math.max(session.trackIndex + step, 0), lastTrackIndex);
+  const trackIndex = Math.min(
+    Math.max(session.trackIndex + step, 0),
+    lastTrackIndex,
+  );
   if (trackIndex === session.trackIndex) {
     return session;
   }
   return { ...session, trackIndex };
 }
 
-export function reduceMixtapeSession(session: MixtapeSession, action: MixtapeSessionAction): MixtapeSession {
+export function reduceMixtapeSession(
+  session: MixtapeSession,
+  action: MixtapeSessionAction,
+): MixtapeSession {
   switch (action.type) {
     case "loadTape": {
-      if (!isKnownTape(session, action.date) || action.date === session.loadedTapeDate) {
+      if (
+        !isKnownTape(session, action.date) ||
+        action.date === session.loadedTapeDate
+      ) {
         return session;
       }
       // The tape that was in the player goes back to the box.
@@ -89,13 +106,24 @@ export function reduceMixtapeSession(session: MixtapeSession, action: MixtapeSes
       if (session.loadedTapeDate === null) {
         return session;
       }
-      return { ...session, loadedTapeDate: null, trackIndex: 0, playing: false };
+      return {
+        ...session,
+        loadedTapeDate: null,
+        trackIndex: 0,
+        playing: false,
+      };
     }
     case "placeTapeOnFloor": {
-      if (!isKnownTape(session, action.date) || action.date === session.loadedTapeDate) {
+      if (
+        !isKnownTape(session, action.date) ||
+        action.date === session.loadedTapeDate
+      ) {
         return session;
       }
-      return { ...session, floorTapes: { ...session.floorTapes, [action.date]: action.position } };
+      return {
+        ...session,
+        floorTapes: { ...session.floorTapes, [action.date]: action.position },
+      };
     }
     case "returnTapeToBox": {
       const floorTapes = withoutFloorTape(session.floorTapes, action.date);

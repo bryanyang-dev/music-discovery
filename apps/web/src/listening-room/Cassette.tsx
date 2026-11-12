@@ -11,7 +11,10 @@ export function Cassette({ tape, variant }: CassetteProps) {
   const labels = describeTapeDate(tape.date);
 
   return (
-    <div className={`cassette cassette--${variant}`} data-weekday={labels.weekdayIndex}>
+    <div
+      className={`cassette cassette--${variant}`}
+      data-weekday={labels.weekdayIndex}
+    >
       <div className="cassette__label">
         <div className="cassette__date">{labels.tapeLabel}</div>
         <div className="cassette__stamp" lang="ja" aria-hidden="true">

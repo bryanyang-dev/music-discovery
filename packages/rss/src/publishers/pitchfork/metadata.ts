@@ -1,10 +1,21 @@
-import { IngestionError, type FeedEntry, type TrackInput } from "@music-discovery/shared";
-import { attribute, imageUrl, plainText, unquoteTitle, validDate } from "../../text.ts";
+import {
+  IngestionError,
+  type FeedEntry,
+  type TrackInput,
+} from "@music-discovery/shared";
+import {
+  attribute,
+  imageUrl,
+  plainText,
+  unquoteTitle,
+  validDate,
+} from "../../text.ts";
 
 import { pitchforkUrl } from "./urls.ts";
 
 const MAX_STRUCTURED_NODE_COUNT = 1_000;
-const ARTIST_LINK_CLASS_PATTERN = /\bSplitScreenContentHeaderArtistLink(?:-|\b)/;
+const ARTIST_LINK_CLASS_PATTERN =
+  /\bSplitScreenContentHeaderArtistLink(?:-|\b)/;
 const ISO_DATE_CHARACTER_COUNT = 10;
 
 type JsonObject = Record<string, unknown>;
@@ -17,9 +28,14 @@ function asObject(value: unknown): JsonObject | null {
 }
 
 function hasType(value: JsonObject, expected: string): boolean {
-  const types = Array.isArray(value["@type"]) ? value["@type"] : [value["@type"]];
+  const types = Array.isArray(value["@type"])
+    ? value["@type"]
+    : [value["@type"]];
   return types.some((type) => {
-    return typeof type === "string" && type.replace(/^https?:\/\/schema.org\//, "") === expected;
+    return (
+      typeof type === "string" &&
+      type.replace(/^https?:\/\/schema.org\//, "") === expected
+    );
   });
 }
 
@@ -47,8 +63,12 @@ function extractNames(value: unknown): string[] {
 
 function structuredNodes(html: string): JsonObject[] {
   const nodes: JsonObject[] = [];
-  for (const match of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi)) {
-    if (attribute(match[1] ?? "", "type")?.toLowerCase() !== "application/ld+json") {
+  for (const match of html.matchAll(
+    /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi,
+  )) {
+    if (
+      attribute(match[1] ?? "", "type")?.toLowerCase() !== "application/ld+json"
+    ) {
       continue;
     }
 
@@ -60,7 +80,11 @@ function structuredNodes(html: string): JsonObject[] {
     }
 
     const queue = Array.isArray(parsed) ? [...parsed] : [parsed];
-    for (let position = 0; position < queue.length && position < MAX_STRUCTURED_NODE_COUNT; position++) {
+    for (
+      let position = 0;
+      position < queue.length && position < MAX_STRUCTURED_NODE_COUNT;
+      position++
+    ) {
       const node = asObject(queue[position]);
       if (!node) {
         continue;
@@ -105,12 +129,16 @@ function infoSlices(html: string, label: string): string[] {
   const values: string[] = [];
   for (const match of html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li\s*>/gi)) {
     const block = match[1] ?? "";
-    const key = block.match(/<p\b[^>]*class=["'][^"']*InfoSliceKey[^"']*["'][^>]*>([\s\S]*?)<\/p>/i);
+    const key = block.match(
+      /<p\b[^>]*class=["'][^"']*InfoSliceKey[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
+    );
     if (plainText(key?.[1]) !== label + ":") {
       continue;
     }
 
-    const value = block.match(/<p\b[^>]*class=["'][^"']*InfoSliceValue[^"']*["'][^>]*>([\s\S]*?)<\/p>/i);
+    const value = block.match(
+      /<p\b[^>]*class=["'][^"']*InfoSliceValue[^"']*["'][^>]*>([\s\S]*?)<\/p>/i,
+    );
     const text = plainText(value?.[1]);
     if (text) {
       values.push(text);
@@ -124,7 +152,9 @@ function recordingReleaseDate(value: unknown): string | null {
     return null;
   }
 
-  const normalizedDate = validDate(value)?.toISOString().slice(0, ISO_DATE_CHARACTER_COUNT);
+  const normalizedDate = validDate(value)
+    ?.toISOString()
+    .slice(0, ISO_DATE_CHARACTER_COUNT);
   return normalizedDate === value ? value : null;
 }
 
@@ -171,7 +201,11 @@ function selectReview(html: string, acceptedUrls: string[]): JsonObject {
   throw new IngestionError("INVALID_METADATA");
 }
 
-export function extractPitchforkTrack(entry: FeedEntry, html: string, pageUrl = entry.sourceUrl): TrackInput {
+export function extractPitchforkTrack(
+  entry: FeedEntry,
+  html: string,
+  pageUrl = entry.sourceUrl,
+): TrackInput {
   const finalUrl = pitchforkUrl(pageUrl);
   const canonicalUrl = canonicalReviewUrl(html, finalUrl);
   const review = selectReview(html, [canonicalUrl, finalUrl]);
@@ -180,7 +214,8 @@ export function extractPitchforkTrack(entry: FeedEntry, html: string, pageUrl = 
     throw new IngestionError("INVALID_METADATA");
   }
   const structuredArtists = extractNames(recording.byArtist);
-  const artists = structuredArtists.length > 0 ? structuredArtists : headerArtists(html);
+  const artists =
+    structuredArtists.length > 0 ? structuredArtists : headerArtists(html);
   if (artists.length === 0) {
     throw new IngestionError("MISSING_METADATA");
   }
@@ -200,8 +235,11 @@ export function extractPitchforkTrack(entry: FeedEntry, html: string, pageUrl = 
   }
 
   const reviewAuthor = extractNames(review.author).join(", ") || null;
-  const structuredImage = asObject(recording.image)?.url ?? asObject(review.image)?.url
-    ?? recording.image ?? review.image;
+  const structuredImage =
+    asObject(recording.image)?.url ??
+    asObject(review.image)?.url ??
+    recording.image ??
+    review.image;
   const structuredGenres = extractNames(recording.genre);
   const structuredLabels = extractNames(recording.recordLabel);
 
@@ -212,11 +250,17 @@ export function extractPitchforkTrack(entry: FeedEntry, html: string, pageUrl = 
     artists,
     reviewTitle: entry.reviewTitle ?? rawTitle,
     reviewAuthor: reviewAuthor ?? entry.reviewAuthor,
-    reviewPublishedAt: validDate(review.datePublished) ?? entry.reviewPublishedAt,
+    reviewPublishedAt:
+      validDate(review.datePublished) ?? entry.reviewPublishedAt,
     imageUrl: entry.imageUrl ?? imageUrl(structuredImage),
-    genres: structuredGenres.length > 0 ? structuredGenres : infoSlices(html, "Genre"),
-    labels: structuredLabels.length > 0 ? structuredLabels : infoSlices(html, "Label"),
+    genres:
+      structuredGenres.length > 0
+        ? structuredGenres
+        : infoSlices(html, "Genre"),
+    labels:
+      structuredLabels.length > 0
+        ? structuredLabels
+        : infoSlices(html, "Label"),
     releaseDate: recordingReleaseDate(recording.datePublished),
   };
 }
-

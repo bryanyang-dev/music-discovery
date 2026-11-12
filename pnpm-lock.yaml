@@ -178,6 +178,9 @@ importers:
       esbuild:
         specifier: ^0.25.0
         version: 0.25.12
+      prettier:
+        specifier: 3.10.0
+        version: 3.10.0
       supabase:
         specifier: ^3.1.0
         version: 3.1.0
@@ -1141,6 +1144,11 @@ packages:
     resolution: {integrity: sha512-Jtc2612XINuBjIl/QTWsV5UvE8UHuNblcO3vVADSrKsrc6RqGX6lOW1cEo3CM2v0XG4Nat8nI+YM7/f26VxXLw==}
     engines: {node: '>=12'}
 
+  prettier@3.10.0:
+    resolution: {integrity: sha512-mBi4765LgjO1PFjlEs7pUeK0nb1bw71c+N4/ItfeUWNdY5cV2pRKaFpbbFRYmDJMO+5ZwzGxHRqHxFZna7iv5w==}
+    engines: {node: '>=14'}
+    hasBin: true
+
   react-dom@19.3.1:
     resolution: {integrity: sha512-Y0bARz53lhEC1NMCASs0/j+faB/zqt3R8hpvg1e8+61ZVJ4UL0UdC4cBbXfZMcIuhrfgeILTLe+ZeBCavQPtKQ==}
     peerDependencies:
@@ -1780,6 +1788,8 @@ snapshots:
       source-map-js: 1.2.2
 
   postgres@3.4.7: {}
+
+  prettier@3.10.0: {}
 
   react-dom@19.3.1(react@19.3.1):
     dependencies:

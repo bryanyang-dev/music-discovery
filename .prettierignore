@@ -1,0 +1,19 @@
+# Build output, dependencies and local files
+**/node_modules/
+**/dist/
+**/coverage/
+.env
+.env.*
+*.log
+certs/
+infra/*.zip
+.claude/
+.codex/
+.agents/
+
+# Generated dependency and migration state; preserve applied migration history
+pnpm-lock.yaml
+packages/db/migrations/
+
+# Parser inputs retain their original layout
+packages/rss/test/fixtures/

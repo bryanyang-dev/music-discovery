@@ -1,4 +1,8 @@
-import type { CacheValidators, FeedEntry, RunIssue } from "@music-discovery/shared";
+import type {
+  CacheValidators,
+  FeedEntry,
+  RunIssue,
+} from "@music-discovery/shared";
 
 export interface HttpOptions {
   fetcher?: typeof fetch;

@@ -1,13 +1,21 @@
 import { httpUrl, IngestionError } from "@music-discovery/shared";
 
-export function pitchforkUrl(value: string, kind: "feed" | "review" | "artist" = "review", base?: string): string {
+export function pitchforkUrl(
+  value: string,
+  kind: "feed" | "review" | "artist" = "review",
+  base?: string,
+): string {
   let url: URL;
   try {
     url = new URL(httpUrl(value, base));
   } catch {
     throw new IngestionError("UNSAFE_URL");
   }
-  if (url.protocol !== "https:" || !["pitchfork.com", "www.pitchfork.com"].includes(url.hostname) || url.port) {
+  if (
+    url.protocol !== "https:" ||
+    !["pitchfork.com", "www.pitchfork.com"].includes(url.hostname) ||
+    url.port
+  ) {
     throw new IngestionError("UNSAFE_URL");
   }
   url.hostname = "pitchfork.com";
@@ -26,7 +34,10 @@ export function pitchforkUrl(value: string, kind: "feed" | "review" | "artist" =
     throw new IngestionError("UNSAFE_URL");
   }
   for (const key of [...url.searchParams.keys()]) {
-    if (/^utm_/i.test(key) || ["fbclid", "gclid", "mc_cid", "mc_eid"].includes(key.toLowerCase())) {
+    if (
+      /^utm_/i.test(key) ||
+      ["fbclid", "gclid", "mc_cid", "mc_eid"].includes(key.toLowerCase())
+    ) {
       url.searchParams.delete(key);
     }
   }

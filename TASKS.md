@@ -1,5 +1,21 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 19:24 UTC — Add shared Prettier formatting
+
+- Installed exact root development dependency Prettier 3.10.0 with the approved
+  `pnpm add -Dw --save-exact prettier --ignore-scripts` command; updated the lockfile.
+- Added `pnpm format` and `pnpm format:check`, shared two-space/double-quote/
+  semicolon/trailing-comma settings, and exclusions for generated output, local
+  agent configuration, migration history, lockfiles and parser fixtures.
+- Applied the initial formatting baseline to supported workspace files and updated
+  README and AGENTS.md with the commands and exclusions. No runtime behavior changes.
+- Validation: formatting checks, TypeScript checks, 143 application tests, 37
+  infrastructure/upload tests, six Lambda bundle tests, production web build and
+  `git diff --check` passed. Database integration tests were not run; no database
+  behavior changed, and those tests require an authorized disposable database.
+- The sandboxed install could not resolve npm DNS; the same approved command
+  succeeded with network access. No deployments or remote migrations occurred.
+
 ## 2026-11-12 19:10 UTC — Default Lambda upload targets from shared configuration
 
 - Centralized the console-managed target ARNs, region and local AWS profile in
@@ -84,7 +100,7 @@
 ## 2026-11-12 05:08 UTC — Add streaming provider match schema
 
 - Added RLS-enabled `track_streaming_matches` with primary key `(track_id,
-  provider)`, a track foreign key, durable provider references, attribution data,
+provider)`, a track foreign key, durable provider references, attribution data,
   matching provenance, and independent lookup attempt/error fields. SQL checks
   enforce supported statuses/methods and require complete references for matches;
   unresolved states cannot retain recording details. Different editorial rows can
@@ -122,17 +138,17 @@ operating instructions; later entries supersede earlier assumptions.
 
 ## Task board
 
-| ID | Task | Status |
-| --- | --- | --- |
-| T01 | Validate source format; record implementation decisions and fixture provenance | Complete |
-| T02 | Replace generic article contracts with source, track, and run contracts | Complete |
-| T03 | Implement safe bounded HTTP, retries, conditional requests, RSS and metadata extraction | Complete |
-| T04 | Implement Drizzle tables/migrations, source seed, atomic upserts, and source locking | Complete (live DB validation blocked) |
-| T05 | Implement hourly-run orchestration, durable run records, failure accounting and cache rules | Complete |
-| T06 | Implement Lambda entry point, deadline handling, and minimal local invocation | Complete |
-| T07 | Add reviewable, undeployed AWS infrastructure and operational alarms/failure paths | Complete (not deployed) |
-| T08 | Verify unit/integration tests, migration consistency, bundle, and infrastructure | Complete locally; real DB/cloud validation blocked |
-| T09 | Update setup/runbook documentation and final handoff | Complete |
+| ID  | Task                                                                                        | Status                                             |
+| --- | ------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| T01 | Validate source format; record implementation decisions and fixture provenance              | Complete                                           |
+| T02 | Replace generic article contracts with source, track, and run contracts                     | Complete                                           |
+| T03 | Implement safe bounded HTTP, retries, conditional requests, RSS and metadata extraction     | Complete                                           |
+| T04 | Implement Drizzle tables/migrations, source seed, atomic upserts, and source locking        | Complete (live DB validation blocked)              |
+| T05 | Implement hourly-run orchestration, durable run records, failure accounting and cache rules | Complete                                           |
+| T06 | Implement Lambda entry point, deadline handling, and minimal local invocation               | Complete                                           |
+| T07 | Add reviewable, undeployed AWS infrastructure and operational alarms/failure paths          | Complete (not deployed)                            |
+| T08 | Verify unit/integration tests, migration consistency, bundle, and infrastructure            | Complete locally; real DB/cloud validation blocked |
+| T09 | Update setup/runbook documentation and final handoff                                        | Complete                                           |
 
 ## Initial inspection
 
@@ -373,7 +389,6 @@ This section is updated as each task progresses, including verification evidence
   remain unchanged; no database migration was executed.
 - Whitespace validation included untracked source/docs as well as Git's diff check.
 - No dependency installations, cloud changes, deployments or commits.
-
 
 ## Follow-up — RSS-only handler test mode
 
@@ -762,7 +777,6 @@ This section is updated as each task progresses, including verification evidence
   and 27 infrastructure/mocked-upload tests), pnpm test:bundle (rebuilt Lambda plus
   three smoke tests), and Git whitespace checks passed. Live database integration
   was not run; no AWS deployment or database changes performed.
-
 
 ## 2026-11-11 16:57 UTC — Documentation audit: console-managed Lambda
 

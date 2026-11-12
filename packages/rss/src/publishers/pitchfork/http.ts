@@ -23,7 +23,11 @@ function retryAfterMs(value: string | null, nowMs: number): number | null {
 }
 
 function cacheValidator(value: string | null): string | null {
-  if (!value || value.length > HTTP_POLICY.maxValidatorCharacters || /[\r\n]/.test(value)) {
+  if (
+    !value ||
+    value.length > HTTP_POLICY.maxValidatorCharacters ||
+    /[\r\n]/.test(value)
+  ) {
     return null;
   }
 
@@ -73,7 +77,9 @@ async function readResponseBody(
   }
 
   try {
-    return new TextDecoder("utf-8", { fatal: true }).decode(Buffer.concat(chunks));
+    return new TextDecoder("utf-8", { fatal: true }).decode(
+      Buffer.concat(chunks),
+    );
   } catch {
     throw new IngestionError("UNSUPPORTED_ENCODING");
   }
@@ -85,19 +91,26 @@ async function requestOnce(
   headers: Record<string, string>,
   options: HttpOptions,
 ): Promise<HttpResponse> {
-  const requestTimeoutSignal = AbortSignal.timeout(options.timeoutMs ?? HTTP_POLICY.requestTimeoutMs);
+  const requestTimeoutSignal = AbortSignal.timeout(
+    options.timeoutMs ?? HTTP_POLICY.requestTimeoutMs,
+  );
   const signal = options.signal
     ? AbortSignal.any([options.signal, requestTimeoutSignal])
     : requestTimeoutSignal;
-  const defaultMaxResponseBytes = kind === "feed"
-    ? HTTP_POLICY.maxFeedResponseBytes
-    : HTTP_POLICY.maxReviewResponseBytes;
+  const defaultMaxResponseBytes =
+    kind === "feed"
+      ? HTTP_POLICY.maxFeedResponseBytes
+      : HTTP_POLICY.maxReviewResponseBytes;
   const maxResponseBytes = options.maxBytes ?? defaultMaxResponseBytes;
   const fetcher = options.fetcher ?? fetch;
   let url = pitchforkUrl(input, kind);
 
   try {
-    for (let redirectCount = 0; redirectCount <= HTTP_POLICY.maxRedirectCount; redirectCount++) {
+    for (
+      let redirectCount = 0;
+      redirectCount <= HTTP_POLICY.maxRedirectCount;
+      redirectCount++
+    ) {
       signal.throwIfAborted();
       const response = await fetcher(url, {
         method: "GET",
@@ -105,7 +118,10 @@ async function requestOnce(
         signal,
         headers: {
           "User-Agent": "music-discovery/0.1 (hourly RSS ingestion)",
-          Accept: kind === "feed" ? "application/rss+xml, application/xml, text/xml" : "text/html",
+          Accept:
+            kind === "feed"
+              ? "application/rss+xml, application/xml, text/xml"
+              : "text/html",
           ...headers,
         },
       });
@@ -135,14 +151,16 @@ async function requestOnce(
         let retryDelayMs: number | null = null;
         if (RETRYABLE_STATUS_CODES.has(response.status)) {
           const nowMs = (options.now ?? Date.now)();
-          retryDelayMs = retryAfterMs(response.headers.get("retry-after"), nowMs) ?? 0;
+          retryDelayMs =
+            retryAfterMs(response.headers.get("retry-after"), nowMs) ?? 0;
         }
 
         throw new IngestionError("HTTP_ERROR", retryDelayMs);
       }
 
       const contentType = response.headers.get("content-type") ?? "";
-      const unsupportedCharset = /charset\s*=\s*["']?(?!utf-?8\b|us-ascii\b)[\w-]+/i.test(contentType);
+      const unsupportedCharset =
+        /charset\s*=\s*["']?(?!utf-?8\b|us-ascii\b)[\w-]+/i.test(contentType);
       if (unsupportedCharset) {
         await response.body?.cancel();
         throw new IngestionError("UNSUPPORTED_ENCODING");
@@ -161,12 +179,17 @@ async function requestOnce(
       throw error;
     }
 
-    const code = requestTimeoutSignal.aborted ? "REQUEST_TIMEOUT" : "NETWORK_ERROR";
+    const code = requestTimeoutSignal.aborted
+      ? "REQUEST_TIMEOUT"
+      : "NETWORK_ERROR";
     throw new IngestionError(code, 0);
   }
 }
 
-async function sleepBeforeRetry(milliseconds: number, signal?: AbortSignal): Promise<void> {
+async function sleepBeforeRetry(
+  milliseconds: number,
+  signal?: AbortSignal,
+): Promise<void> {
   await delay(milliseconds, undefined, signal ? { signal } : {});
 }
 
@@ -176,7 +199,13 @@ export async function requestPitchfork(
   headers: Record<string, string> = {},
   options: HttpOptions = {},
 ): Promise<HttpResponse> {
-  const attemptCount = Math.max(1, Math.min(options.attempts ?? HTTP_POLICY.maxAttemptCount, HTTP_POLICY.maxAttemptCount));
+  const attemptCount = Math.max(
+    1,
+    Math.min(
+      options.attempts ?? HTTP_POLICY.maxAttemptCount,
+      HTTP_POLICY.maxAttemptCount,
+    ),
+  );
   const sleep = options.sleep ?? sleepBeforeRetry;
 
   for (let attempt = 0; attempt < attemptCount; attempt++) {
@@ -184,11 +213,17 @@ export async function requestPitchfork(
       return await requestOnce(url, kind, headers, options);
     } catch (error) {
       const isLastAttempt = attempt === attemptCount - 1;
-      if (!(error instanceof IngestionError) || error.retryAfterMs === null || isLastAttempt) {
+      if (
+        !(error instanceof IngestionError) ||
+        error.retryAfterMs === null ||
+        isLastAttempt
+      ) {
         throw error;
       }
 
-      const backoffMs = HTTP_POLICY.initialRetryDelayMs * HTTP_POLICY.retryBackoffMultiplier ** attempt;
+      const backoffMs =
+        HTTP_POLICY.initialRetryDelayMs *
+        HTTP_POLICY.retryBackoffMultiplier ** attempt;
       const retryDelayMs = Math.max(backoffMs, error.retryAfterMs);
       if (retryDelayMs > HTTP_POLICY.maxRetryDelayMs) {
         throw error;
@@ -204,4 +239,3 @@ export async function requestPitchfork(
 
   throw new IngestionError("HTTP_ERROR");
 }
-

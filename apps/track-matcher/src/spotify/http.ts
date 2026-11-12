@@ -1,12 +1,27 @@
 import { IngestionError } from "../../../../packages/shared/src/index.ts";
 
-export const SPOTIFY_HTTP_POLICY = { requestTimeoutMs: 10_000, maxResponseBytes: 512_000 } as const;
+export const SPOTIFY_HTTP_POLICY = {
+  requestTimeoutMs: 10_000,
+  maxResponseBytes: 512_000,
+} as const;
 
 // All callers supply fixed Spotify endpoints. Redirects cannot forward credentials elsewhere.
-export async function spotifyJson(fetcher: typeof fetch, url: string, init: RequestInit, signal: AbortSignal): Promise<unknown> {
-  const requestSignal = AbortSignal.any([signal, AbortSignal.timeout(SPOTIFY_HTTP_POLICY.requestTimeoutMs)]);
+export async function spotifyJson(
+  fetcher: typeof fetch,
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const requestSignal = AbortSignal.any([
+    signal,
+    AbortSignal.timeout(SPOTIFY_HTTP_POLICY.requestTimeoutMs),
+  ]);
   try {
-    const response = await fetcher(url, { ...init, signal: requestSignal, redirect: "error" });
+    const response = await fetcher(url, {
+      ...init,
+      signal: requestSignal,
+      redirect: "error",
+    });
     if (!response.ok) {
       await response.body?.cancel();
       if (response.status === 401 || response.status === 403) {

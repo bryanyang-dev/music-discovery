@@ -28,13 +28,22 @@ const cases: [string, ErrorCode][] = [
 
 test("driver and Drizzle-wrapped database failures produce specific, credential-free messages", () => {
   for (const [driverCode, expectedCode] of cases) {
-    const driver = Object.assign(new Error("private credentials"), { code: driverCode });
-    const wrapper = new DrizzleQueryError("SELECT private_sql", ["private-password"], driver);
+    const driver = Object.assign(new Error("private credentials"), {
+      code: driverCode,
+    });
+    const wrapper = new DrizzleQueryError(
+      "SELECT private_sql",
+      ["private-password"],
+      driver,
+    );
     for (const input of [driver, wrapper]) {
       const error = databaseError(input);
       assert.equal(error.code, expectedCode, driverCode);
       assert.equal(error.message, new IngestionError(expectedCode).message);
-      assert.doesNotMatch(error.stack ?? "", /private credentials|private_sql|private-password/);
+      assert.doesNotMatch(
+        error.stack ?? "",
+        /private credentials|private_sql|private-password/,
+      );
       assert.ok(!JSON.stringify(error).includes("private"));
       assert.equal(error.cause, undefined);
     }
@@ -44,15 +53,25 @@ test("driver and Drizzle-wrapped database failures produce specific, credential-
 test("known ingestion failures retain identity, retry information and cleanup errors", () => {
   const failure = new IngestionError("RUN_DEADLINE", 1_000);
   failure.cleanupErrors.push("DATABASE_TIMEOUT");
-  assert.equal(databaseError(new Error("wrapper", { cause: failure })), failure);
+  assert.equal(
+    databaseError(new Error("wrapper", { cause: failure })),
+    failure,
+  );
 });
 
 test("unknown, misleading and cyclic errors fall back safely without reading driver text", () => {
   const cyclic = { cause: undefined as unknown };
   cyclic.cause = cyclic;
-  for (const input of [null, undefined, "private", { code: "private-password" },
-    { code: "constructor" }, { code: "__proto__" },
-    new Error("password authentication failed: private"), cyclic]) {
+  for (const input of [
+    null,
+    undefined,
+    "private",
+    { code: "private-password" },
+    { code: "constructor" },
+    { code: "__proto__" },
+    new Error("password authentication failed: private"),
+    cyclic,
+  ]) {
     const error = databaseError(input);
     assert.equal(error.code, "DATABASE_ERROR");
     assert.ok(!error.message.includes("private"));

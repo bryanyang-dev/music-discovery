@@ -98,28 +98,28 @@ Earlier committed tracks remain stored if later work fails. Successful runs save
 feed validators; a 304 skips review fetches and track writes. Partial/failed runs
 clear validators so the next poll retries the full current feed.
 
-| Log event | Contents |
-| --- | --- |
-| `rss_fetch_started`, `rss_fetch_succeeded` | Attempt; success also includes the parsed fetch response |
-| `feed_parsed` | Entire parsed feed: entries, counts and parsing issues |
-| `track_extracted` | One enriched track before its database write; this event alone does not confirm persistence |
-| `rss_fetch_attempt_failed`, `rss_fetch_retry_scheduled` | Safe failure details or retry delay in milliseconds |
-| `rss_fetch_aborted`, `rss_fetch_max_attempts_reached`, `rss_fetch_failed` | Deadline, exhausted retries or terminal fetch failure |
-| `ingestion_completed` | Nested `result` with status, run ID/counts/issues, or disabled-source skip reason |
-| `ingestion_failed`, `database_close_failed` | Safe error code and descriptive message |
-| `database_request`, `database_response` | Paired database transaction, SQL statement and shutdown metadata; see below |
+| Log event                                                                 | Contents                                                                                    |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `rss_fetch_started`, `rss_fetch_succeeded`                                | Attempt; success also includes the parsed fetch response                                    |
+| `feed_parsed`                                                             | Entire parsed feed: entries, counts and parsing issues                                      |
+| `track_extracted`                                                         | One enriched track before its database write; this event alone does not confirm persistence |
+| `rss_fetch_attempt_failed`, `rss_fetch_retry_scheduled`                   | Safe failure details or retry delay in milliseconds                                         |
+| `rss_fetch_aborted`, `rss_fetch_max_attempts_reached`, `rss_fetch_failed` | Deadline, exhausted retries or terminal fetch failure                                       |
+| `ingestion_completed`                                                     | Nested `result` with status, run ID/counts/issues, or disabled-source skip reason           |
+| `ingestion_failed`, `database_close_failed`                               | Safe error code and descriptive message                                                     |
+| `database_request`, `database_response`                                   | Paired database transaction, SQL statement and shutdown metadata; see below                 |
 
 Handler logs include `requestId` and `level`; only RSS attempt events have an
 attempt number. Local previews log feeds/tracks without a Lambda request ID and
 retain `writeSkipped: true`; `pnpm ingest:preview` and `pnpm ingest:fixture` never write.
 `ingestion_completed.result.status` can be:
 
-| Status | Meaning |
-| --- | --- |
-| `succeeded` | Valid entries were persisted, the feed was empty, or HTTP returned 304 |
+| Status            | Meaning                                                                                         |
+| ----------------- | ----------------------------------------------------------------------------------------------- |
+| `succeeded`       | Valid entries were persisted, the feed was empty, or HTTP returned 304                          |
 | `partial_failure` | Some entries/reviews were rejected; later valid tracks were persisted; handler returns normally |
-| `failed` | Feed, database or deadline failure; handler throws after cleanup |
-| `skipped` | Source disabled; no run row created |
+| `failed`          | Feed, database or deadline failure; handler throws after cleanup                                |
+| `skipped`         | Source disabled; no run row created                                                             |
 
 Inserted/updated/unchanged counts reflect completed database upserts. `found`
 counts raw RSS items; `rejected` counts invalid entries/reviews. Counts are returned/logged, not stored
@@ -217,24 +217,24 @@ unfinished run rows is implemented.
 
 ## Troubleshooting and maintenance
 
-| Error code | Check |
-| --- | --- |
-| `DATABASE_CONFIG_MISSING` / `DATABASE_CONFIG_INVALID` | Runtime `DATABASE_URL`; PostgreSQL URL syntax; URL-encoded password |
-| `DATABASE_TLS_ERROR` | Bundled CA, `NODE_EXTRA_CA_CERTS`, certificate expiry and hostname |
-| `DATABASE_AUTH_ERROR` | Database/pooler username and password |
-| `DATABASE_PERMISSION_ERROR` | Runtime role grants and RLS policies |
-| `DATABASE_DNS_ERROR` / `DATABASE_CONNECTION_ERROR` | Hostname, port, network access and database availability |
-| `DATABASE_TIMEOUT` | Connection/query/lock timeout or server-side query cancellation |
-| `DATABASE_SCHEMA_ERROR` / `SOURCE_NOT_FOUND` | Target database, applied migrations and requested source registration |
-| `INVALID_SOURCE` / `UNSUPPORTED_SOURCE` | Event source key, registration arguments, publisher/category and compatible feed URL |
-| `SOURCE_ALREADY_EXISTS` | Choose a different key; registration never overwrites existing sources |
-| `DATABASE_ERROR` | Unclassified database failure; inspect database diagnostics privately |
-| `HTTP_ERROR` / `NETWORK_ERROR` / `REQUEST_TIMEOUT` | Publisher response, network access, Retry-After and deadlines |
-| `INVALID_FEED` / `INVALID_ENTRY` | Feed format, required fields and allowed URLs |
-| `MISSING_METADATA` / `INVALID_METADATA` | Review JSON-LD and scoped artist-header layout |
-| `UNSAFE_URL` | Host, protocol, port, credentials and path validation |
-| `RESPONSE_TOO_LARGE` / `UNSUPPORTED_ENCODING` | Response size and encoding |
-| `RUN_DEADLINE` | Work budget and slow HTTP/database operations |
+| Error code                                            | Check                                                                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| `DATABASE_CONFIG_MISSING` / `DATABASE_CONFIG_INVALID` | Runtime `DATABASE_URL`; PostgreSQL URL syntax; URL-encoded password                  |
+| `DATABASE_TLS_ERROR`                                  | Bundled CA, `NODE_EXTRA_CA_CERTS`, certificate expiry and hostname                   |
+| `DATABASE_AUTH_ERROR`                                 | Database/pooler username and password                                                |
+| `DATABASE_PERMISSION_ERROR`                           | Runtime role grants and RLS policies                                                 |
+| `DATABASE_DNS_ERROR` / `DATABASE_CONNECTION_ERROR`    | Hostname, port, network access and database availability                             |
+| `DATABASE_TIMEOUT`                                    | Connection/query/lock timeout or server-side query cancellation                      |
+| `DATABASE_SCHEMA_ERROR` / `SOURCE_NOT_FOUND`          | Target database, applied migrations and requested source registration                |
+| `INVALID_SOURCE` / `UNSUPPORTED_SOURCE`               | Event source key, registration arguments, publisher/category and compatible feed URL |
+| `SOURCE_ALREADY_EXISTS`                               | Choose a different key; registration never overwrites existing sources               |
+| `DATABASE_ERROR`                                      | Unclassified database failure; inspect database diagnostics privately                |
+| `HTTP_ERROR` / `NETWORK_ERROR` / `REQUEST_TIMEOUT`    | Publisher response, network access, Retry-After and deadlines                        |
+| `INVALID_FEED` / `INVALID_ENTRY`                      | Feed format, required fields and allowed URLs                                        |
+| `MISSING_METADATA` / `INVALID_METADATA`               | Review JSON-LD and scoped artist-header layout                                       |
+| `UNSAFE_URL`                                          | Host, protocol, port, credentials and path validation                                |
+| `RESPONSE_TOO_LARGE` / `UNSUPPORTED_ENCODING`         | Response size and encoding                                                           |
+| `RUN_DEADLINE`                                        | Work budget and slow HTTP/database operations                                        |
 
 Every `IngestionError` exposes `CODE: explanation`. Recognized driver codes are
 classified through bounded Drizzle causes; raw driver messages, SQL, parameters
