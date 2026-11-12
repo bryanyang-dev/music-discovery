@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Context } from "aws-lambda";
-import { createHandler, trackIdFromEvent } from "../src/handler.ts";
+import { createHandler } from "../src/handler.ts";
 import { MATCHER_TIMING } from "../src/timing.ts";
 import { DATABASE_POLICY } from "../../../packages/db/src/index.ts";
 import {
@@ -63,7 +63,6 @@ test("invalid invocation metadata is rejected before connecting", async () => {
     { trackId: "bad" },
     { trackId: 123 },
   ]) {
-    assert.throws(() => trackIdFromEvent(event), /INVALID_TRACK_ID/);
     await assert.rejects(
       createHandler({
         logger: quiet,

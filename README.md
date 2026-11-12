@@ -204,6 +204,10 @@ ZIP upload, include `certs/prod-ca-2021.crt` beside it. No `node_modules` is nee
 The upload task requires installed AWS CLI, pnpm and zip, plus
 `lambda:GetFunctionConfiguration` and `lambda:UpdateFunctionCode`. A missing/empty CA stops the task before AWS calls.
 
+The ingestion invocation contract is [`IngestionEvent`](apps/ingestion/src/models.ts).
+Its [event parser](apps/ingestion/src/event-validation.ts) validates raw input before
+database access; extra fields are ignored.
+
 ## Track matcher Lambda
 
 The separately console-created track matcher uses the same Node.js 24 ZIP layout
@@ -221,6 +225,11 @@ Invoke it with a persisted editorial track UUID:
 ```json
 { "trackId": "00000000-0000-4000-8000-000000000001" }
 ```
+
+The matcher invocation contract is [`TrackMatcherEvent`](apps/track-matcher/src/models.ts).
+Its [event parser](apps/track-matcher/src/event-validation.ts) validates raw input
+before database access. TypeScript contracts document the expected payloads;
+the Lambda entry points accept `unknown` until validation succeeds.
 
 The UUID must identify an actual `tracks` row. Artist/title fields supplied in the
 event are ignored. The result includes `trackId`, `provider: "spotify"`, and

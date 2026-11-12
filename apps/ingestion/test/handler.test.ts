@@ -14,6 +14,7 @@ import {
   type HttpOptions,
 } from "@music-discovery/rss";
 import { createHandler } from "../src/handler.ts";
+import type { IngestionEvent } from "../src/models.ts";
 import { INGESTION_TIMING } from "../src/timing.ts";
 
 const feedUrl = "https://pitchfork.com/feed/reviews/best/tracks/rss";
@@ -134,7 +135,9 @@ function setup() {
   };
 }
 
-const ingestionEvent = { sourceKey: "pitchfork_best_new_tracks" };
+const ingestionEvent = {
+  sourceKey: "pitchfork_best_new_tracks",
+} satisfies IngestionEvent;
 const context = (remainingMs: number) =>
   ({
     awsRequestId: "request",
