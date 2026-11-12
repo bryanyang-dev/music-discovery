@@ -1,5 +1,20 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-12 20:56 UTC — Log exact Spotify catalog query parameters
+
+- Added `queryParams` to catalog `spotify_request` events, read directly from the
+  outgoing URL. The complete decoded `q`, `type`, `market`, `limit` and `offset`
+  values are logged without truncation for each page, including failed requests.
+  Other parameters, token endpoint queries, credentials and headers stay excluded.
+- Updated the operations guide with a request-log example and refined Spotify
+  agent guidance to distinguish public search parameters from secret query fields.
+- Added regression coverage comparing logs with actual outgoing URLs, including
+  query normalization, Unicode, reserved characters, pagination, provider failure
+  and exclusion of credentials/unknown parameters/token endpoint queries.
+- Validation: all 197 offline tests, typechecks, both Lambda builds, six bundle
+  tests, formatting and diff checks passed. No installation, deployment, live
+  Spotify requests or database writes were needed.
+
 ## 2026-11-12 20:48 UTC — Include Spotify response contents in call logs
 
 - Added `response` and `responseTruncated` to Spotify response events. Catalog

@@ -42,6 +42,14 @@ export async function spotifyJson(
     details: Record<string, unknown>,
   ) {
     try {
+      const requestDetails: Record<string, unknown> = {};
+      if (event === "spotify_request" && options.operation === "search") {
+        requestDetails.queryParams = Object.fromEntries(
+          [...new URL(url).searchParams].filter(([key]) =>
+            ["q", "type", "market", "limit", "offset"].includes(key),
+          ),
+        );
+      }
       const message = JSON.stringify({
         event,
         level,
@@ -50,6 +58,7 @@ export async function spotifyJson(
         callId,
         operation: options.operation,
         ...(options.offset === undefined ? {} : { offset: options.offset }),
+        ...requestDetails,
         ...details,
       });
       if (level === "ERROR") {

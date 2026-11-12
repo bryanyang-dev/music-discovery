@@ -43,7 +43,28 @@ the same paired logs described below. Every Spotify HTTP call, including token
 acquisition and each catalog search page, emits `spotify_request` and
 `spotify_response` JSON events. Pair them by `callId`; `requestId` and `trackId`
 correlate them with the invocation and editorial row. `operation` is `token` or
-`search`; search events include the zero-based result `offset`. Responses include
+`search`; search events include the zero-based result `offset`.
+Search request events also include `queryParams` with the exact decoded `q`, `type`,
+`market`, `limit` and `offset` from the outgoing URL. Values are strings and are
+not truncated; `q` shows the final query after editorial text normalization. Each
+page logs its actual offset. Other query parameters and token endpoint query
+strings are excluded. For example:
+
+```json
+{
+  "event": "spotify_request",
+  "operation": "search",
+  "queryParams": {
+    "q": "track:\"A Song\" artist:\"An Artist\"",
+    "type": "track",
+    "market": "US",
+    "limit": "10",
+    "offset": "0"
+  }
+}
+```
+
+Responses include
 `status` (`succeeded` or `failed`), `durationMs`, and `httpStatus` (null when no HTTP
 response arrived); failures include a safe `code` at ERROR level. Success means
 the bounded HTTP body was read and parsed as JSON; later schema validation or

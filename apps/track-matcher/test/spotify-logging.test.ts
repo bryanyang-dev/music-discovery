@@ -75,7 +75,6 @@ test("every token request and search page has a correlated log pair with sanitiz
     clientSecret,
     accessToken,
     bodyMarker,
-    "synthetic-query-marker",
     Buffer.from(`${clientId}:${clientSecret}`).toString("base64"),
   ]) {
     assert.ok(!serialized.includes(marker));
@@ -229,4 +228,77 @@ test("per-request timeout logs the safe failure and preserves the HTTP policy", 
   assertPair(state.events, "failed");
   assert.equal(state.events[1]!.code, "SPOTIFY_REQUEST_FAILED");
   assert.ok(!JSON.stringify(state.events).includes("synthetic-timeout-marker"));
+});
+
+test("search request logs show the exact outgoing query parameters on every page", async () => {
+  const state = capture();
+  const urls: string[] = [];
+  const responses = [
+    Response.json({ access_token: "synthetic-access-token-marker" }),
+    Response.json({ tracks: { items: [], next: "more" } }),
+    new Response(null, { status: 429 }),
+  ];
+  await assert.rejects(
+    searchSpotify(
+      {
+        id: "track-id",
+        trackTitle: '  Café: "A&B" \\ Live? + %  ',
+        artists: ["An Artist"],
+      },
+      {
+        clientId: "synthetic-client",
+        clientSecret: "synthetic-secret-marker",
+        market: "GB",
+      },
+      new AbortController().signal,
+      (async (url) => {
+        urls.push(String(url));
+        return responses.shift()!;
+      }) as typeof fetch,
+      { logger: state.logger },
+    ),
+    /SPOTIFY_RATE_LIMITED/,
+  );
+  const requests = state.events.filter(
+    (entry) => entry.event === "spotify_request",
+  );
+  assert.equal(requests.length, 3);
+  assert.equal(requests[0]!.queryParams, undefined);
+  for (let page = 0; page < 2; page++) {
+    const queryParams = requests[page + 1]!.queryParams;
+    assert.deepEqual(
+      queryParams,
+      Object.fromEntries(new URL(urls[page + 1]!).searchParams),
+    );
+    assert.deepEqual(queryParams, {
+      q: 'track:"Café A&B Live? + %" artist:"An Artist"',
+      type: "track",
+      market: "GB",
+      limit: "10",
+      offset: String(page * 10),
+    });
+  }
+  assert.ok(
+    !JSON.stringify(state.events).includes("synthetic-access-token-marker"),
+  );
+});
+
+test("query logging excludes unknown parameters, credentials, fragments and token queries", async () => {
+  for (const operation of ["search", "token"] as const) {
+    const state = capture();
+    const secret = "synthetic-query-secret-marker";
+    await spotifyJson(
+      (async () => Response.json({})) as typeof fetch,
+      `https://user:${secret}@api.spotify.com/v1/search?q=track%3A%22A%26B%22&access_token=${secret}&client_secret=${secret}#${secret}`,
+      { headers: { Authorization: `Bearer ${secret}` } },
+      new AbortController().signal,
+      { operation, trackId: "track-id", logger: state.logger },
+    );
+    if (operation === "search") {
+      assert.deepEqual(state.events[0]!.queryParams, { q: 'track:"A&B"' });
+    } else {
+      assert.equal(state.events[0]!.queryParams, undefined);
+    }
+    assert.ok(!JSON.stringify(state.events).includes(secret));
+  }
 });

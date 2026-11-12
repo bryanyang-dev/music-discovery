@@ -111,7 +111,9 @@ The goal is to become more effective at working in this repository with every co
 - Route Spotify token and catalog requests through `apps/track-matcher/src/spotify/http.ts`
   so every call has paired logs. Log response contents through the Spotify response
   sanitizer's public-field allowlist and size limits; exclude credentials, arbitrary
-  provider error text, authorization headers, raw URL query strings and request bodies.
+  provider error text, authorization headers and request bodies. Log the exact
+  catalog `q`, `type`, `market`, `limit` and `offset` from the outgoing URL as
+  `queryParams`; exclude other query parameters and token endpoint query strings.
 - Preserve primary failures when cleanup fails. Bound cleanup, make cancellation
   ownership explicit, and never expose secrets in logs or errors.
 - In `apps/web`, keep state and formatting logic in plain `.ts` modules tested from
