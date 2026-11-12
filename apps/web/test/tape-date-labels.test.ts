@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { describeTapeDate } from "../src/floor-session/tape-date-labels.ts";
+import { describeTapeDate } from "../src/listening-room/tape-date-labels.ts";
 
 test("describes a tape date in every form the scene shows", () => {
   assert.deepEqual(describeTapeDate("2026-11-11"), {

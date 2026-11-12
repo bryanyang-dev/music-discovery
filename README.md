@@ -5,7 +5,7 @@ review pages, logs parsed metadata, and upserts tracks into Supabase alongside
 source/run records. Results report inserted, updated, unchanged and rejected counts.
 Successful runs save feed validators; unchanged feeds skip review fetches and writes.
 Pitchfork Best New Tracks is currently the only implemented publisher adapter.
-The React + Vite frontend in `apps/web` renders the "Floor Session" cassette-player
+The React + Vite frontend in `apps/web` renders the "Listening Room" cassette-player
 scene from local sample data; it does not read ingestion data or play audio yet.
 
 ## Project structure
@@ -31,9 +31,9 @@ apps/web/
   src/
     main.tsx                          React root mounting
     App.tsx                           Theme state (day/night) and today's date
-    floor-session/
-      FloorSession.tsx                Scene composition, artboard scaling and session wiring
-      floor-session.css               Design values; per-theme custom properties
+    listening-room/
+      ListeningRoom.tsx               Scene composition, artboard scaling and session wiring
+      listening-room.css              Design values; per-theme custom properties
       models.ts                       Track and mixtape data shapes
       mixtape-session.ts              Player and tape-location reducer (load, eject, floor, transport)
       sample-mixtapes.ts              Placeholder week of tapes ending today
@@ -236,7 +236,7 @@ Hosted track-ingestion integration remains unverified.
 
 ## Web frontend
 
-`apps/web` implements the "C5 · Anime" Floor Session design (day and night): a
+`apps/web` implements the "C5 · Anime" Listening Room design (day and night): a
 tatami floor with a portable cassette player. Each day's recommendations are one
 dated tape; the J-card lists its tracks and the "THIS WEEK" box holds the last
 seven days. Run it with `pnpm web:dev`.

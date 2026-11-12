@@ -1026,3 +1026,15 @@ This section is updated as each task progresses, including verification evidence
   "C5 · Anime" mockups. Checked with day and night screenshots; `pnpm web:build` passed.
 - Follow-up: lightened the night-theme cups (`#5a5488` over `#453f6c`) so they stand
   out from the dark floor; rechecked with a night screenshot and `pnpm web:build`.
+
+## 2026-11-12 01:19 UTC — Rename the frontend feature to listening-room
+
+- Renamed `apps/web/src/floor-session/` to `apps/web/src/listening-room/`,
+  `FloorSession.tsx`/`FloorSession` to `ListeningRoom.tsx`/`ListeningRoom`, and
+  the stylesheet to `listening-room.css`. Updated application/test imports and
+  current README documentation; older task entries retain their historical names.
+- Validation using installed dependencies: root TypeScript check passed; all 16
+  web tests passed; Vite production build passed. Web TypeScript check failed
+  with the existing TS2345 nullability error at `FloorItem.tsx:74` (file unchanged
+  by this rename). The standard web build includes that check and remains blocked.
+  Lambda checks were skipped because this change only renames frontend files.

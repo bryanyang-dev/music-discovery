@@ -13,7 +13,7 @@ import { TapeBox } from "./TapeBox.tsx";
 import { ThemeLamp, type FloorTheme } from "./ThemeLamp.tsx";
 import { stageHeightPx, stageWidthPx, useStageScale } from "./use-stage-scale.ts";
 import { useTapeDrag, type TapeDropTarget } from "./use-tape-drag.ts";
-import "./floor-session.css";
+import "./listening-room.css";
 
 /** Keeps a dropped cassette fully on the artboard so it can always be picked up again. */
 function clampToFloor(center: FloorPosition): FloorPosition {
@@ -23,7 +23,7 @@ function clampToFloor(center: FloorPosition): FloorPosition {
   };
 }
 
-interface FloorSessionProps {
+interface ListeningRoomProps {
   readonly theme: FloorTheme;
   readonly onToggleTheme: () => void;
   /** The newest tape is dated today; the box holds the week ending today. */
@@ -31,7 +31,7 @@ interface FloorSessionProps {
 }
 
 /** The whole scene: a tatami floor with the cassette player, this week's tapes and the room around them. */
-export function FloorSession({ theme, onToggleTheme, today }: FloorSessionProps) {
+export function ListeningRoom({ theme, onToggleTheme, today }: ListeningRoomProps) {
   const [session, dispatch] = useReducer(reduceMixtapeSession, today, (date) =>
     createMixtapeSession(createSampleWeek(date)),
   );

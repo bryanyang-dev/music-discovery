@@ -6,8 +6,8 @@ import {
   reduceMixtapeSession,
   type MixtapeSession,
   type MixtapeSessionAction,
-} from "../src/floor-session/mixtape-session.ts";
-import type { Mixtape } from "../src/floor-session/models.ts";
+} from "../src/listening-room/mixtape-session.ts";
+import type { Mixtape } from "../src/listening-room/models.ts";
 
 const tapes: Mixtape[] = [
   {
