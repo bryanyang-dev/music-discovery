@@ -7,7 +7,9 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && pnpm --filter @music-discovery/web typecheck",
+    "web:dev": "pnpm --filter @music-discovery/web dev",
+    "web:build": "pnpm --filter @music-discovery/web build",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "db:migrate:local": "DATABASE_MIGRATION_ALLOW_LOCAL_NO_TLS=1 node --env-file=.env.local --import tsx node_modules/drizzle-kit/bin.cjs migrate --config=drizzle.migrate.config.ts",

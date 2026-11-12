@@ -963,3 +963,21 @@ This section is updated as each task progresses, including verification evidence
   the earlier skill-reference entry describes a superseded PR revision.
 - Validation: relative Markdown links, section target, balanced code fences and Git
   whitespace passed. Application tests were not rerun for documentation-only edits.
+
+## 2026-11-12 00:22 UTC — Scaffold React + Vite frontend
+
+- Added `apps/web` (`@music-discovery/web`): hand-written Vite entry, React root and
+  placeholder `App`, with its own browser/JSX `tsconfig.json`. No `create-vite`.
+- Installed with approval: `react`/`react-dom` ^19.3.1; dev `vite` ^8.3.7 (8.3.8 was
+  inside the `minimumReleaseAge` window), `@vitejs/plugin-react` ^6.3.0,
+  `@types/react`/`@types/react-dom` ^19.3.0.
+- Root `tsconfig.json` excludes `apps/web`; `pnpm typecheck` now also runs the web
+  typecheck. Added `pnpm web:dev` and `pnpm web:build`.
+- Added `esbuild: true` to `allowBuilds`: pnpm 12 failed the first install with
+  `ERR_PNPM_IGNORED_BUILDS` for the existing esbuild 0.18.20/0.25.12/0.28.2.
+- A filtered `pnpm add` in the fresh worktree left other workspace packages unlinked
+  (`@music-discovery/shared` not found); the approved full frozen install fixed it.
+  Recorded the rule in `AGENTS.md` and README.
+- Validation: `pnpm typecheck` passed; `pnpm test` 104/104 and 30/30 passed;
+  `pnpm test:bundle` 4/4 passed; `pnpm web:build` passed (220 kB JS, 69 kB gzip);
+  Vite dev server served the page and transformed `App.tsx`, then was stopped.
