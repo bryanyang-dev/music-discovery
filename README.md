@@ -4,15 +4,16 @@
 
 ## What the app does
 
-Tape Journal turns music discovery into a daily mixtape: a cassette of songs
-recommended by curated music blogs and publications, presented in a cozy virtual
-listening room. Browse the week's tapes, load one into the player, and explore
-its track list. The room has day and night themes.
+Tape Journal turns music discovery into weekly mixtapes: cassettes of songs
+recommended by music publications, presented in a cozy virtual listening room.
+Each tape holds one review week's recommendations. Load a tape into the player,
+browse its track list (each links to its review) and play it through Spotify. The
+room has day and night themes.
 
-The frontend currently uses sample tapes and visual player controls; audio
-playback and backend integration are still to come. Behind the scenes, separate
-services collect Pitchfork Best New Tracks recommendations into PostgreSQL and
-match stored tracks to Spotify recordings.
+It is a personal project that runs locally and is not hosted. Pitchfork Best New
+Tracks recommendations are collected into PostgreSQL, matched to Spotify
+recordings, and served to the browser by a small local API. Playback uses the
+Spotify Web Playback SDK, which needs Spotify Premium and a desktop browser.
 
 ## Developer setup
 
@@ -23,25 +24,44 @@ from the repository root:
 pnpm install --frozen-lockfile --ignore-scripts
 ```
 
-Start the frontend:
-
-```sh
-pnpm web:dev
-```
-
-The listening-room prototype needs no database or credentials. To work on
-backend ingestion, copy `.env.example` to `.env` and fill in your PostgreSQL
-connection details. Before running any local database command, export the bundled
+Copy `.env.example` to `.env` and fill in your PostgreSQL connection details and
+Spotify app credentials. Before running any database command, export the bundled
 CA certificate from the repository root:
 
 ```sh
 export NODE_EXTRA_CA_CERTS="$PWD/certs/prod-ca-2021.crt"
 ```
 
-Run this once per terminal session, before starting Node. It is required for
-source registration, live previews, ingestion and migrations against the configured
-database; without it, TLS verification fails. Offline fixtures and frontend work
-do not need it.
+Run this once per terminal session, before starting Node. Without it, TLS
+verification fails for source registration, previews, ingestion, matching, the
+local API and migrations. Offline fixtures and tests do not need it.
+
+### Running it end to end
+
+1. In the [Spotify developer dashboard](https://developer.spotify.com/dashboard),
+   add `http://127.0.0.1:5173/` as a redirect URI of the app whose credentials are
+   in `.env`.
+2. Collect and match songs:
+
+   ```sh
+   pnpm ingest --source pitchfork_best_new_tracks
+   pnpm match
+   ```
+
+3. Start the local API and the frontend in two terminals:
+
+   ```sh
+   pnpm api:dev
+   pnpm web:dev
+   ```
+
+4. Open <http://127.0.0.1:5173/> (not `localhost`), select **Connect Spotify**,
+   then press play on the cassette player.
+
+Only tracks with a confirmed Spotify match appear on tapes. Before Spotify is
+connected, the player's controls work but play nothing.
+
+### Sources
 
 To register a source, choose a unique key and run:
 
@@ -63,7 +83,7 @@ pnpm ingest:preview --source my_pitchfork_feed
 pnpm ingest --source my_pitchfork_feed
 ```
 
-See [operations](docs/operations.md#source-selection-and-registration) for database
+See [operations](docs/operations.md) for the local API, matching, database
 permissions, source configuration and Lambda releases.
 
 Useful development commands:
@@ -71,6 +91,8 @@ Useful development commands:
 | Command               | Purpose                                      |
 | --------------------- | -------------------------------------------- |
 | `pnpm ingest:fixture` | Preview ingestion offline without a database |
+| `pnpm match`          | Match unmatched tracks to Spotify            |
+| `pnpm api:dev`        | Serve tapes to the frontend on 127.0.0.1     |
 | `pnpm typecheck`      | Check backend and frontend TypeScript        |
 | `pnpm test`           | Run offline tests                            |
 | `pnpm format`         | Format the workspace                         |
@@ -79,5 +101,3 @@ Useful development commands:
 
 For backend design details, see the [ingestion specification](docs/ingestion-spec.md)
 and [timing guide](docs/timing-and-policies.md).
-The proposed move to LLM-extracted feeds and per-user tapes is described in the
-[playlist generation design](docs/playlist-generation-design.md).

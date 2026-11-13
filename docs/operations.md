@@ -43,6 +43,11 @@ Both individual upload commands run the full offline checks and bundle smoke tes
 only the selected app. See [matcher configuration and contract](#track-matcher-configuration-and-contract)
 for Spotify variables, timeout, database permissions and example invocation.
 The matcher is invoked directly with one `trackId`; ingestion does not invoke it.
+Locally, `pnpm match` runs the same handler once per track that has no Spotify
+row or a `pending` one (left by a failed attempt), oldest first and at most 200 per
+run; rerun it to continue. Settled `not_found` and `ambiguous` results are not
+retried. It needs `DATABASE_URL` and the `SPOTIFY_*` variables in `.env`, prints a
+summary of outcomes, and exits non-zero if any track failed.
 
 `track_matching_completed` logs `requestId`, `trackId` and the persisted status;
 `track_matching_failed` logs only `requestId` and a safe code. Database calls use
@@ -111,6 +116,41 @@ the shared defaults. Override both with
 Explicit targets must be distinct. The command stops on the first failure.
 An earlier successful upload is not rolled back.
 Each individual upload runs its release checks before updating that function.
+
+## Local tape API
+
+`pnpm api:dev` serves the listening room from `DATABASE_URL`. It listens only on
+`127.0.0.1:8787`, has no authentication and serves no user data; the app is not
+meant to be hosted. The Vite dev server proxies `/api` to it.
+
+- `GET /api/tapes` reads up to 500 matched tracks, newest first, and returns the 7
+  most recent review weeks that have any (`weekStart` is the UTC Monday), each with
+  its tracks oldest first. Only `matched` Spotify rows appear; a recording credited
+  twice in a week appears once.
+- `GET /api/spotify-config` returns the public `SPOTIFY_CLIENT_ID` for browser
+  sign-in.
+- Failures return `{ "code": "..." }` with a safe error code. Database calls use the
+  paired logs described below.
+
+Browser playback uses Spotify's authorization code flow with PKCE and the Web
+Playback SDK, which require Spotify Premium and a desktop browser. Tokens stay in
+the browser's `localStorage`. Register `http://127.0.0.1:5173/` as a redirect URI
+in the Spotify app; Spotify does not accept `localhost` for loopback redirects.
+Playback failures show Spotify's HTTP status, reason and message in the room's
+status pill and the browser console. A `404` from the play request means Spotify
+does not know the browser device yet: playback transfer is retried up to 5 times
+with growing waits (about 15 seconds in total), then the start is retried once.
+While a start is pending the pill shows "Starting the tape…"; if Spotify accepts it
+but the browser player does not report playing within 10 seconds, that is shown
+as a failure. Each Spotify player request and state change is logged to the
+browser console.
+After a final `404` the console also lists the devices Spotify knows for the
+account; if this browser's device ID is missing, Spotify never registered it. The
+signed-in Spotify account must be listed under User Management in the Spotify
+app's dashboard while the app is in Development Mode. Sign-in requests
+`streaming`, `user-read-email`, `user-read-private`, `user-modify-playback-state`
+and `user-read-playback-state`; stored tokens missing any of them count as signed
+out, so adding a scope prompts for consent again.
 
 ## Source selection and registration
 

@@ -1,5 +1,7 @@
-import { useCallback, useReducer, useRef } from "react";
-import { CassettePlayer } from "./CassettePlayer.tsx";
+import { useCallback, useEffect, useReducer, useRef } from "react";
+import type { SpotifyTokenSource } from "../spotify/spotify-auth.ts";
+import { useSpotifyPlayer } from "../spotify/use-spotify-player.ts";
+import { CassettePlayer, defaultVolumePercent } from "./CassettePlayer.tsx";
 import { IcedTea, SleepingCat, Sparkle } from "./FloorDecor.tsx";
 import { FloorItem } from "./FloorItem.tsx";
 import { FloorTape, floorCassetteHalfSizePx } from "./FloorTape.tsx";
@@ -10,10 +12,11 @@ import {
   findLoadedTape,
   reduceMixtapeSession,
 } from "./mixtape-session.ts";
-import type { FloorPosition } from "./models.ts";
+import type { FloorPosition, Mixtape } from "./models.ts";
 import { RoomAtmosphere } from "./RoomAtmosphere.tsx";
-import { createSampleWeek } from "./sample-mixtapes.ts";
+import { SpotifyPill } from "./SpotifyPill.tsx";
 import { TapeBox } from "./TapeBox.tsx";
+import { planSkip, planTogglePlayback } from "./tape-playback.ts";
 import { ThemeLamp, type FloorTheme } from "./ThemeLamp.tsx";
 import {
   stageHeightPx,
@@ -40,32 +43,61 @@ function clampToFloor(center: FloorPosition): FloorPosition {
 interface ListeningRoomProps {
   readonly theme: FloorTheme;
   readonly onToggleTheme: () => void;
-  /** The newest tape is dated today; the box holds the week ending today. */
-  readonly today: Date;
+  /** Recent weekly tapes, newest first. */
+  readonly tapes: readonly Mixtape[];
+  /** Set while signed in to Spotify; playback then goes through Spotify. */
+  readonly spotifyTokens: SpotifyTokenSource | null;
+  readonly onConnectSpotify: () => void;
+  /** A problem to show on the floor, such as tapes failing to load. */
+  readonly notice: string | null;
 }
 
-/** The whole scene: a tatami floor with the cassette player, this week's tapes and the room around them. */
+/** The whole scene: a tatami floor with the cassette player, recent weekly tapes and the room around them. */
 export function ListeningRoom({
   theme,
   onToggleTheme,
-  today,
+  tapes,
+  spotifyTokens,
+  onConnectSpotify,
+  notice,
 }: ListeningRoomProps) {
-  const [session, dispatch] = useReducer(reduceMixtapeSession, today, (date) =>
-    createMixtapeSession(createSampleWeek(date)),
+  const [session, dispatch] = useReducer(
+    reduceMixtapeSession,
+    tapes,
+    createMixtapeSession,
   );
+  // The room is never remounted for new tapes: remounting would also replace the
+  // Spotify player, and Spotify does not reliably register a second player.
+  useEffect(() => {
+    dispatch({ type: "tapesLoaded", tapes });
+  }, [tapes]);
+  const spotify = useSpotifyPlayer(
+    spotifyTokens,
+    defaultVolumePercent,
+    useCallback(({ trackUri, paused }) => {
+      dispatch({ type: "playbackChanged", trackUri, paused });
+    }, []),
+  );
+  const spotifyReady = spotify.status === "ready";
+  const { pause: pauseSpotify } = spotify;
   const viewportRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
   const boxRef = useRef<HTMLElement>(null);
   const scale = useStageScale(viewportRef);
 
-  const loadTape = useCallback((tapeDate: string) => {
-    dispatch({ type: "loadTape", date: tapeDate });
-  }, []);
+  // Swapping or removing the tape stops the music that belonged to the old one.
+  const loadTape = useCallback(
+    (tapeDate: string) => {
+      pauseSpotify();
+      dispatch({ type: "loadTape", date: tapeDate });
+    },
+    [pauseSpotify],
+  );
   const dropTape = useCallback(
     (tapeDate: string, target: TapeDropTarget, center: FloorPosition) => {
       if (target === "player") {
-        dispatch({ type: "loadTape", date: tapeDate });
+        loadTape(tapeDate);
       } else if (target === "box") {
         dispatch({ type: "returnTapeToBox", date: tapeDate });
       } else {
@@ -76,7 +108,7 @@ export function ListeningRoom({
         });
       }
     },
-    [],
+    [loadTape],
   );
   const { drag, getTapeHandlers } = useTapeDrag({
     stageRef,
@@ -105,7 +137,7 @@ export function ListeningRoom({
           }
           style={{ transform: `scale(${scale})` }}
         >
-          <h1 className="visually-hidden">Daily Mixtape</h1>
+          <h1 className="visually-hidden">Weekly Mixtape</h1>
 
           <RoomAtmosphere />
 
@@ -122,11 +154,44 @@ export function ListeningRoom({
               tape={loadedTape}
               trackIndex={session.trackIndex}
               playing={session.playing}
-              onTogglePlayback={() => dispatch({ type: "togglePlayback" })}
-              onNextTrack={() => dispatch({ type: "nextTrack" })}
-              onPreviousTrack={() => dispatch({ type: "previousTrack" })}
-              onStop={() => dispatch({ type: "stop" })}
-              onEject={() => dispatch({ type: "ejectTape" })}
+              onTogglePlayback={() => {
+                if (spotifyReady) {
+                  spotify.run(
+                    planTogglePlayback(session, spotify.snapshot.trackUri),
+                  );
+                } else {
+                  dispatch({ type: "togglePlayback" });
+                }
+              }}
+              onNextTrack={() => {
+                const command = spotifyReady
+                  ? planSkip(session, spotify.snapshot.trackUri, "next")
+                  : { kind: "none" as const };
+                if (command.kind === "none") {
+                  dispatch({ type: "nextTrack" });
+                } else {
+                  spotify.run(command);
+                }
+              }}
+              onPreviousTrack={() => {
+                const command = spotifyReady
+                  ? planSkip(session, spotify.snapshot.trackUri, "previous")
+                  : { kind: "none" as const };
+                if (command.kind === "none") {
+                  dispatch({ type: "previousTrack" });
+                } else {
+                  spotify.run(command);
+                }
+              }}
+              onStop={() => {
+                pauseSpotify();
+                dispatch({ type: "stop" });
+              }}
+              onEject={() => {
+                pauseSpotify();
+                dispatch({ type: "ejectTape" });
+              }}
+              onVolumeChange={spotify.setVolumePercent}
             />
             <Sparkle owner="player" />
           </FloorItem>
@@ -153,6 +218,14 @@ export function ListeningRoom({
             <div className="floor-pill floor-hint">
               Drop a tape on the player to load it
             </div>
+          </FloorItem>
+          <FloorItem stageRef={stageRef}>
+            <SpotifyPill
+              status={spotify.status}
+              failureDetail={spotify.failureDetail}
+              notice={notice}
+              onConnect={onConnectSpotify}
+            />
           </FloorItem>
 
           <FloorItem stageRef={stageRef}>

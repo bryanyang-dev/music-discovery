@@ -6,7 +6,7 @@ const playIconPath = "M6 4l10 6-10 6z";
 const pauseIconPath = "M5 4h4v12H5zM11 4h4v12h-4z";
 const nextIconPath = "M10 5l7 5-7 5zM2 5l7 5-7 5z";
 const previousIconPath = "M10 5l-7 5 7 5zM18 5l-7 5 7 5z";
-const defaultVolumePercent = 70;
+export const defaultVolumePercent = 70;
 
 interface CassettePlayerProps {
   readonly ref: Ref<HTMLDivElement>;
@@ -18,6 +18,7 @@ interface CassettePlayerProps {
   readonly onPreviousTrack: () => void;
   readonly onStop: () => void;
   readonly onEject: () => void;
+  readonly onVolumeChange: (percent: number) => void;
 }
 
 function describeStatus(
@@ -74,6 +75,7 @@ export function CassettePlayer({
   onPreviousTrack,
   onStop,
   onEject,
+  onVolumeChange,
 }: CassettePlayerProps) {
   const hasTape = tape !== null;
 
@@ -81,9 +83,9 @@ export function CassettePlayer({
     <div className="player" ref={ref}>
       <div className="player__header">
         <div className="player__brand">
-          <div className="player__brand-name">DAILY MIXTAPE</div>
+          <div className="player__brand-name">WEEKLY MIXTAPE</div>
           <div className="player__brand-kana" lang="ja">
-            デイリー・ミックステープ
+            ウィークリー・ミックステープ
           </div>
         </div>
         <button
@@ -122,6 +124,7 @@ export function CassettePlayer({
           min={0}
           max={100}
           defaultValue={defaultVolumePercent}
+          onChange={(event) => onVolumeChange(Number(event.target.value))}
         />
         <div className="player__lcd" lang="ja" aria-hidden="true">
           <LcdReadout tape={tape} trackIndex={trackIndex} playing={playing} />

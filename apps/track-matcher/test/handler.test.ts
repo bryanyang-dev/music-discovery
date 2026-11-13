@@ -21,6 +21,9 @@ function fixture() {
   const failures: string[] = [];
   let closed = 0;
   const store: TrackMatchingStore = {
+    async listTrackIdsToMatch() {
+      return [track.id];
+    },
     async getTrack() {
       return track;
     },

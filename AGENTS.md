@@ -25,6 +25,20 @@ These rules supplement inherited instructions, including the dependency-installa
   heading, using `## YYYY-MM-DD HH:mm UTC — Section title` (convert to UTC).
 - If no documentation update is needed, state that briefly in the handoff.
 
+## Product scope
+
+- Tape Journal is a personal, local-only app with one user: Spotify's quota rules
+  rule out public sign-in. Do not add hosting, multi-user auth or server-side
+  Spotify user tokens without an explicit request. `apps/api` binds 127.0.0.1;
+  Spotify user tokens stay in the browser (PKCE); only the public client ID
+  reaches it.
+- Spotify loopback redirects must use `http://127.0.0.1:<port>`, never
+  `localhost`; keep the Vite host, port and registered redirect URI in sync.
+- Create exactly one Web Playback SDK player per page. Never remount (for
+  example via `key`) the component that owns `useSpotifyPlayer`; update its
+  state with reducer actions instead. A disconnected-then-recreated player can
+  report `ready` with a device ID the Web API answers 404 for.
+
 ## Deployment documentation
 
 - The existing Lambda is managed in the AWS console, including manually set
