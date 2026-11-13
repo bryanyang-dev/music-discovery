@@ -1,20 +1,20 @@
 import type { Mixtape } from "./models.ts";
-import { describeTapeDate } from "./tape-date-labels.ts";
+import { describeTapeWeek } from "./tape-week-labels.ts";
 
 interface JCardProps {
   readonly tape: Mixtape;
   readonly trackIndex: number;
 }
 
-/** The unfolded cassette insert: painted sky cover, date and the Side A track list. */
+/** The unfolded cassette insert: painted sky cover, week and the Side A track list. */
 export function JCard({ tape, trackIndex }: JCardProps) {
-  const labels = describeTapeDate(tape.date);
+  const labels = describeTapeWeek(tape.date);
 
   return (
     <>
       <section
         className="j-card"
-        aria-label={`Track list for ${labels.spokenDate}`}
+        aria-label={`Track list for the ${labels.spokenWeek}`}
       >
         <div className="j-card__cover">
           <svg
@@ -64,8 +64,7 @@ export function JCard({ tape, trackIndex }: JCardProps) {
               SIDE A<span lang="ja"> ・ A面</span>
             </div>
             <div className="j-card__weekday">
-              {labels.weekdayCode}
-              <span lang="ja"> ・ {labels.weekdayJapanese}</span>
+              WEEK<span lang="ja"> ・ 週</span>
             </div>
           </div>
           <ol className="j-card__tracks">
@@ -73,7 +72,7 @@ export function JCard({ tape, trackIndex }: JCardProps) {
               const isCurrent = index === trackIndex;
               return (
                 <li
-                  key={index}
+                  key={track.id}
                   className={
                     isCurrent
                       ? "j-card__track j-card__track--current"
@@ -81,7 +80,14 @@ export function JCard({ tape, trackIndex }: JCardProps) {
                   }
                   aria-current={isCurrent ? "true" : undefined}
                 >
-                  {track.title} · {track.artist}
+                  <a
+                    href={track.sourceUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    title="Read the review"
+                  >
+                    {track.title} · {track.artist}
+                  </a>
                 </li>
               );
             })}

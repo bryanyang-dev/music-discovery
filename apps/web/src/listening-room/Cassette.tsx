@@ -1,5 +1,5 @@
 import type { Mixtape } from "./models.ts";
-import { describeTapeDate } from "./tape-date-labels.ts";
+import { describeTapeWeek } from "./tape-week-labels.ts";
 
 interface CassetteProps {
   readonly tape: Mixtape;
@@ -8,17 +8,17 @@ interface CassetteProps {
 }
 
 export function Cassette({ tape, variant }: CassetteProps) {
-  const labels = describeTapeDate(tape.date);
+  const labels = describeTapeWeek(tape.date);
 
   return (
     <div
       className={`cassette cassette--${variant}`}
-      data-weekday={labels.weekdayIndex}
+      data-tape-color={labels.colorIndex}
     >
       <div className="cassette__label">
         <div className="cassette__date">{labels.tapeLabel}</div>
         <div className="cassette__stamp" lang="ja" aria-hidden="true">
-          {labels.weekdayKanji}
+          週
         </div>
         <div className="cassette__reels" aria-hidden="true">
           <div className="cassette__reel" />

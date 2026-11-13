@@ -1,9 +1,18 @@
 export interface Track {
+  /** Editorial track ID from the API. */
+  readonly id: string;
   readonly title: string;
   readonly artist: string;
+  /** Matched Spotify recording, for example "spotify:track:…". */
+  readonly spotifyUri: string;
+  /** The review that recommended the track. */
+  readonly sourceUrl: string;
 }
 
-/** One day's recommendations. `date` is an ISO calendar date (YYYY-MM-DD) and identifies the tape. */
+/**
+ * One week's recommendations. `date` is the Monday (ISO YYYY-MM-DD, UTC) that
+ * starts the week and identifies the tape. Tracks are in play order.
+ */
 export interface Mixtape {
   readonly date: string;
   readonly tracks: readonly Track[];

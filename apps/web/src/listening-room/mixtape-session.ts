@@ -3,18 +3,21 @@ import type { FloorPosition, Mixtape } from "./models.ts";
 /**
  * What the player is doing and where each tape is. A tape is in the player
  * (`loadedTapeDate`), lying on the floor (`floorTapes`), or otherwise in the box.
- * Playback is visual only; there is no audio source yet.
+ * Before Spotify is connected playback is visual only; once connected,
+ * `playbackChanged` makes the session follow the Spotify player.
  */
 export interface MixtapeSession {
   readonly tapes: readonly Mixtape[];
   readonly loadedTapeDate: string | null;
-  /** Tapes left on the floor, keyed by tape date. */
+  /** Tapes left on the floor, keyed by tape week. */
   readonly floorTapes: Readonly<Record<string, FloorPosition>>;
   readonly trackIndex: number;
   readonly playing: boolean;
 }
 
 export type MixtapeSessionAction =
+  /** The tapes arrived (or changed): start over with the newest tape loaded. */
+  | { readonly type: "tapesLoaded"; readonly tapes: readonly Mixtape[] }
   | { readonly type: "loadTape"; readonly date: string }
   | { readonly type: "ejectTape" }
   | {
@@ -26,7 +29,13 @@ export type MixtapeSessionAction =
   | { readonly type: "togglePlayback" }
   | { readonly type: "stop" }
   | { readonly type: "nextTrack" }
-  | { readonly type: "previousTrack" };
+  | { readonly type: "previousTrack" }
+  | {
+      /** Spotify player state: the current track (null when idle) and whether it is paused. */
+      readonly type: "playbackChanged";
+      readonly trackUri: string | null;
+      readonly paused: boolean;
+    };
 
 /** Starts with the newest tape (the first one) in the player, stopped, and the rest in the box. */
 export function createMixtapeSession(
@@ -86,6 +95,11 @@ export function reduceMixtapeSession(
   action: MixtapeSessionAction,
 ): MixtapeSession {
   switch (action.type) {
+    case "tapesLoaded": {
+      return action.tapes === session.tapes
+        ? session
+        : createMixtapeSession(action.tapes);
+    }
     case "loadTape": {
       if (
         !isKnownTape(session, action.date) ||
@@ -149,6 +163,24 @@ export function reduceMixtapeSession(
     }
     case "previousTrack": {
       return moveTrack(session, -1);
+    }
+    case "playbackChanged": {
+      const tape = findLoadedTape(session);
+      if (!tape) {
+        return session;
+      }
+      const trackIndex = tape.tracks.findIndex(
+        (track) => track.spotifyUri === action.trackUri,
+      );
+      // Spotify is playing something that is not on this tape: show it stopped.
+      if (trackIndex === -1) {
+        return session.playing ? { ...session, playing: false } : session;
+      }
+      const playing = !action.paused;
+      if (trackIndex === session.trackIndex && playing === session.playing) {
+        return session;
+      }
+      return { ...session, trackIndex, playing };
     }
   }
 }

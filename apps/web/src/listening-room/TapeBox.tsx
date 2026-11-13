@@ -1,6 +1,6 @@
 import type { Ref } from "react";
 import type { Mixtape } from "./models.ts";
-import { describeTapeDate } from "./tape-date-labels.ts";
+import { describeTapeWeek } from "./tape-week-labels.ts";
 import type { TapeDragHandlers } from "./use-tape-drag.ts";
 
 interface TapeBoxProps {
@@ -13,7 +13,7 @@ interface TapeBoxProps {
   readonly getTapeHandlers: (tapeDate: string) => TapeDragHandlers;
 }
 
-/** The box of this week's tapes. A tape that is in the player or on the floor leaves a dashed, empty slot. */
+/** The box of recent weekly tapes. A tape that is in the player or on the floor leaves a dashed, empty slot. */
 export function TapeBox({
   ref,
   tapes,
@@ -23,12 +23,15 @@ export function TapeBox({
   getTapeHandlers,
 }: TapeBoxProps) {
   return (
-    <section ref={ref} className="tape-box" aria-label="This week's tapes">
+    <section ref={ref} className="tape-box" aria-label="Recent weekly tapes">
       <div className="tape-box__tab">
-        THIS WEEK<span lang="ja"> ・ 今週</span>
+        RECENT WEEKS<span lang="ja"> ・ 最近</span>
       </div>
+      {tapes.length === 0 ? (
+        <div className="tape-box__empty-slot">NO TAPES YET</div>
+      ) : null}
       {tapes.map((tape) => {
-        const labels = describeTapeDate(tape.date);
+        const labels = describeTapeWeek(tape.date);
 
         if (tape.date === loadedTapeDate) {
           return (
@@ -55,8 +58,8 @@ export function TapeBox({
                 ? "tape-box__tape tape-box__tape--lifted"
                 : "tape-box__tape"
             }
-            data-weekday={labels.weekdayIndex}
-            aria-label={`Load tape, ${labels.spokenDate}`}
+            data-tape-color={labels.colorIndex}
+            aria-label={`Load tape, ${labels.spokenWeek}`}
             {...getTapeHandlers(tape.date)}
           >
             <span className="tape-box__tape-label">
@@ -66,7 +69,7 @@ export function TapeBox({
                 aria-hidden="true"
                 className="tape-box__tape-kanji"
               >
-                {labels.weekdayKanji}
+                週
               </span>
             </span>
           </button>

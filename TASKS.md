@@ -1295,3 +1295,39 @@ This section is updated as each task progresses, including verification evidence
 - Validation: checked Markdown formatting, referenced files/anchors and commands
   against package.json and the CLI parser. Application tests, typechecking and
   Lambda builds skipped because only documentation changed.
+
+## 2026-11-13 20:04 UTC — Pivot to a personal, local, end-to-end app
+
+- Pivot: Spotify's user quota rules make a public product infeasible, so Tape
+  Journal stays a personal project that runs locally and is not hosted. Removed
+  the per-user playlist generation design (commit 48d2a0a) and its README link.
+- Added `pnpm match`: matches every unattempted or `pending` track through the
+  existing matcher handler (`listTrackIdsToMatch` on the matching store).
+- Added `apps/api` (`pnpm api:dev`): a loopback-only Node HTTP server with
+  `GET /api/tapes` (7 most recent UTC review weeks of matched tracks) and
+  `GET /api/spotify-config`, backed by a new `postgres-tape-store.ts`.
+- Frontend: tapes come from the API (sample tapes removed); tapes are weekly, with
+  week labels and rotating colours; J-card tracks link to their reviews. Browser
+  Spotify PKCE sign-in (`spotify-auth.ts`) and the Web Playback SDK
+  (`spotify-player.ts`, `use-spotify-player.ts`) drive the cassette controls; the
+  reducer follows Spotify state via `playbackChanged`. Vite serves on
+  127.0.0.1:5173 and proxies `/api`. No new dependencies.
+- Live run against the development database: ingestion found the feed's 30 items
+  (all unchanged); matching attempted 27 tracks with 8 matched, 6 not found and 13
+  ambiguous, leaving 10 playable tracks; the API returned 7 one-track weekly tapes.
+- Validation: backend and web typechecks, 204 offline tests and 37 script tests
+  pass, the Vite production build succeeds, and the dev server proxies the API.
+  Browser sign-in and audio playback were not exercised (they need an interactive
+  Spotify login and the redirect URI registered in the Spotify app).
+- Follow-up: the first manual run showed "Spotify couldn't play that" with no
+  cause. Playback failures now include Spotify's status, reason and message, and a
+  `404` play response transfers playback to the browser device, retrying the
+  transfer up to 5 times with growing waits (~15 s), then retries the start.
+- Follow-up: the retries still got 404 in Chrome. The room no longer remounts when
+  tapes load (a `tapesLoaded` reducer action instead), so only one SDK player is
+  created per page; the start shows "Starting the tape…" and fails visibly if
+  playback does not begin within 10 s; a final 404 logs Spotify's device list
+  (new `user-read-playback-state` scope, so stored tokens without it ask for
+  consent again). Playback then worked in Chrome without adding the account to
+  User Management. Most likely cause: the remount created a second SDK player
+  (the sign-in was also refreshed at the same time, so that is not fully ruled out).

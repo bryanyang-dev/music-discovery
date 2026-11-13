@@ -93,3 +93,14 @@ export type SpotifyMatch =
       providerArtists: string[] | null;
     }
   | { status: "not_found" | "ambiguous" };
+
+/** A recommended track with a confirmed Spotify recording, as read for tapes. */
+export interface TapeTrack {
+  id: string;
+  trackTitle: string;
+  artists: string[];
+  sourceUrl: string;
+  /** Review publication time, or first-seen time when the feed gave none. */
+  recommendedAt: Date;
+  providerTrackId: string;
+}

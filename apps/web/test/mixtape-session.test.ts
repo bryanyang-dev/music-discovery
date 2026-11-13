@@ -7,18 +7,24 @@ import {
   type MixtapeSession,
   type MixtapeSessionAction,
 } from "../src/listening-room/mixtape-session.ts";
-import type { Mixtape } from "../src/listening-room/models.ts";
+import type { Mixtape, Track } from "../src/listening-room/models.ts";
+
+function track(title: string, artist: string): Track {
+  return {
+    id: title,
+    title,
+    artist,
+    spotifyUri: `spotify:track:${title}`,
+    sourceUrl: `https://example.com/${title}`,
+  };
+}
 
 const tapes: Mixtape[] = [
   {
     date: "2026-11-11",
-    tracks: [
-      { title: "One", artist: "A" },
-      { title: "Two", artist: "B" },
-      { title: "Three", artist: "C" },
-    ],
+    tracks: [track("One", "A"), track("Two", "B"), track("Three", "C")],
   },
-  { date: "2026-11-10", tracks: [{ title: "Only", artist: "D" }] },
+  { date: "2026-11-10", tracks: [track("Only", "D")] },
 ];
 
 function run(
@@ -172,4 +178,61 @@ test("ejecting leaves floor tapes where they are", () => {
     run(onFloor, { type: "ejectTape" }).floorTapes,
     onFloor.floorTapes,
   );
+});
+
+test("Spotify state moves the tape to the playing track", () => {
+  const start = createMixtapeSession(tapes);
+  const playing = run(start, {
+    type: "playbackChanged",
+    trackUri: "spotify:track:Three",
+    paused: false,
+  });
+  assert.equal(playing.trackIndex, 2);
+  assert.equal(playing.playing, true);
+
+  const paused = run(playing, {
+    type: "playbackChanged",
+    trackUri: "spotify:track:Three",
+    paused: true,
+  });
+  assert.equal(paused.trackIndex, 2);
+  assert.equal(paused.playing, false);
+});
+
+test("Spotify playing a track from elsewhere shows the tape stopped", () => {
+  const playing = run(createMixtapeSession(tapes), {
+    type: "playbackChanged",
+    trackUri: "spotify:track:Two",
+    paused: false,
+  });
+  const elsewhere = run(playing, {
+    type: "playbackChanged",
+    trackUri: "spotify:track:SomethingElse",
+    paused: false,
+  });
+  assert.equal(elsewhere.playing, false);
+  assert.equal(elsewhere.trackIndex, 1);
+  assert.equal(
+    run(elsewhere, { type: "playbackChanged", trackUri: null, paused: true }),
+    elsewhere,
+  );
+});
+
+test("Spotify state is ignored with no tape loaded", () => {
+  const empty = run(createMixtapeSession(tapes), { type: "ejectTape" });
+  assert.equal(
+    run(empty, {
+      type: "playbackChanged",
+      trackUri: "spotify:track:One",
+      paused: false,
+    }),
+    empty,
+  );
+});
+
+test("loading tapes starts over with the newest tape; the same tapes change nothing", () => {
+  const empty = createMixtapeSession([]);
+  const loaded = run(empty, { type: "tapesLoaded", tapes });
+  assert.equal(loaded.loadedTapeDate, "2026-11-11");
+  assert.equal(run(loaded, { type: "tapesLoaded", tapes }), loaded);
 });

@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, isNull, or, sql } from "drizzle-orm";
 import {
   IngestionError,
   type MatchingTrack,
@@ -37,6 +37,32 @@ export function createPostgresTrackMatchingStore(
     }
   }
   return {
+    async listTrackIdsToMatch(limit) {
+      return inTransaction("listTracksToMatch", async (transaction, query) => {
+        const rows = await query(
+          "select_tracks_to_match",
+          transaction
+            .select({ id: tracks.id })
+            .from(tracks)
+            .leftJoin(
+              trackStreamingMatches,
+              and(
+                eq(trackStreamingMatches.trackId, tracks.id),
+                eq(trackStreamingMatches.provider, "spotify"),
+              ),
+            )
+            .where(
+              or(
+                isNull(trackStreamingMatches.trackId),
+                eq(trackStreamingMatches.matchStatus, "pending"),
+              ),
+            )
+            .orderBy(asc(tracks.firstSeenAt), asc(tracks.id))
+            .limit(limit),
+        );
+        return rows.map((row) => row.id);
+      });
+    },
     async getTrack(trackId) {
       return inTransaction("getMatchingTrack", async (transaction, query) => {
         const [track] = await query(

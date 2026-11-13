@@ -197,3 +197,20 @@ test("existing manual attribution stays nullable rather than inventing provider 
     assert.equal(saved.providerArtists, null);
   }
 });
+
+test("lists unattempted and pending tracks, oldest first, within the limit", async () => {
+  const state = fixture({
+    select_tracks_to_match: [{ id: track.id }],
+  });
+  assert.deepEqual(await state.store.listTrackIdsToMatch(25), [track.id]);
+  const [call] = state.calls;
+  assert.equal(call?.operation, "select_tracks_to_match");
+  assert.match(call!.sql, /left join "track_streaming_matches"/);
+  assert.match(
+    call!.sql,
+    /"track_streaming_matches"\."track_id" is null or "track_streaming_matches"\."match_status" = \$\d/,
+  );
+  assert.match(call!.sql, /order by "tracks"\."first_seen_at" asc/);
+  assert.ok(call!.params.includes("pending"));
+  assert.ok(call!.params.includes(25));
+});

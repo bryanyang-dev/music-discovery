@@ -1,6 +1,6 @@
 import { Cassette } from "./Cassette.tsx";
 import type { FloorPosition, Mixtape } from "./models.ts";
-import { describeTapeDate } from "./tape-date-labels.ts";
+import { describeTapeWeek } from "./tape-week-labels.ts";
 import type { TapeDragHandlers } from "./use-tape-drag.ts";
 
 /** Half the floor cassette's size: positions are the cassette's centre. */
@@ -39,7 +39,7 @@ export function FloorTape({ tape, center, lifted, handlers }: FloorTapeProps) {
       type="button"
       className="floor-tape"
       style={style}
-      aria-label={`Load tape from the floor, ${describeTapeDate(tape.date).spokenDate}`}
+      aria-label={`Load tape from the floor, ${describeTapeWeek(tape.date).spokenWeek}`}
       {...handlers}
     >
       <Cassette tape={tape} variant="drag" />

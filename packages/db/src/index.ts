@@ -2,6 +2,7 @@ import { createDatabaseClient, type DatabaseOptions } from "./client.ts";
 import { createPostgresIngestionStore } from "./postgres-ingestion-store.ts";
 import { createPostgresTrackMatchingStore } from "./postgres-track-matching-store.ts";
 import { createPostgresSourceRegistry } from "./postgres-source-registry.ts";
+import { createPostgresTapeStore } from "./postgres-tape-store.ts";
 
 export function connectDatabase(
   connectionString: string,
@@ -16,6 +17,7 @@ export function connectDatabase(
     store: createPostgresIngestionStore(inTransaction),
     matching: createPostgresTrackMatchingStore(inTransaction),
     sources: createPostgresSourceRegistry(inTransaction),
+    tapes: createPostgresTapeStore(inTransaction),
     close,
   };
 }
