@@ -20,21 +20,12 @@ Behind the room, three local pieces do the work:
 - **A small local API** groups matched tracks into weekly tapes for the browser,
   which signs in to Spotify and plays them through the Web Playback SDK.
 
-## Status: sunset as a public product
+## Limitations
 
-Tape Journal was meant to become a public app where anyone could connect Spotify
-and get mixtapes built from publications' recommendations. That plan has been
-dropped, and the app will not be hosted.
-
-The reason is Spotify's API access rules. A new Spotify app runs in Development
-Mode, where only a small number of accounts that the developer adds by hand can
+This app runs in Development Mode, where only a small number of accounts that the developer adds by hand can
 use it. Opening it to the public needs an extended quota, which Spotify grants
-only to established organizations with an existing user base, so a personal
-project cannot qualify. Tape Journal depends on Spotify for both matching and
+only to established organizations with an existing user base (250K MAU). Tape Journal depends on Spotify for both matching and
 playback, so without that quota it cannot serve other users.
-
-The repository remains a working personal project that runs on one machine for
-its owner.
 
 ## Current state
 
