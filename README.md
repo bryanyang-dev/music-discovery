@@ -6,14 +6,54 @@
 
 Tape Journal turns music discovery into weekly mixtapes: cassettes of songs
 recommended by music publications, presented in a cozy virtual listening room.
-Each tape holds one review week's recommendations. Load a tape into the player,
-browse its track list (each links to its review) and play it through Spotify. The
-room has day and night themes.
+Each tape holds one review week's recommendations. Drag a tape into the cassette
+player, browse its track list (each song links to the review that recommended it)
+and play it through Spotify with the player's own controls. The room has day and
+night themes.
 
-It is a personal project that runs locally and is not hosted. Pitchfork Best New
-Tracks recommendations are collected into PostgreSQL, matched to Spotify
-recordings, and served to the browser by a small local API. Playback uses the
-Spotify Web Playback SDK, which needs Spotify Premium and a desktop browser.
+Behind the room, three local pieces do the work:
+
+- **Ingestion** reads the Pitchfork Best New Tracks RSS feed and stores each
+  recommended track in PostgreSQL.
+- **Matching** looks each track up in Spotify's catalog and stores its recording
+  only when the match is unambiguous.
+- **A small local API** groups matched tracks into weekly tapes for the browser,
+  which signs in to Spotify and plays them through the Web Playback SDK.
+
+## Status: sunset as a public product
+
+Tape Journal was meant to become a public app where anyone could connect Spotify
+and get mixtapes built from publications' recommendations. That plan has been
+dropped, and the app will not be hosted.
+
+The reason is Spotify's API access rules. A new Spotify app runs in Development
+Mode, where only a small number of accounts that the developer adds by hand can
+use it. Opening it to the public needs an extended quota, which Spotify grants
+only to established organizations with an existing user base, so a personal
+project cannot qualify. Tape Journal depends on Spotify for both matching and
+playback, so without that quota it cannot serve other users.
+
+The repository remains a working personal project that runs on one machine for
+its owner.
+
+## Current state
+
+- **Works end to end locally:** ingest, match, serve, sign in to Spotify and play
+  tapes in the browser. Playback has been checked in Chrome.
+- **One source:** only Pitchfork Best New Tracks has an adapter. Its feed holds
+  about the 30 most recent recommendations, roughly two or three a week.
+- **Few playable songs:** of the 30 stored tracks, 10 have a confirmed Spotify
+  match. Most of the rest are _ambiguous_ (Spotify has several recordings with the
+  same title and artists, such as single and album versions, and the matcher
+  will not guess) or not found. As a result each weekly tape usually holds one
+  song.
+- **Playback requirements:** Spotify Premium and a desktop browser, as required by
+  the Web Playback SDK. The Spotify account must be the app owner's or one added
+  under User Management in the Spotify developer dashboard.
+- **Not hosted:** the API listens only on `127.0.0.1`, has no user accounts, and
+  keeps Spotify sign-in tokens in the browser. AWS Lambda versions of ingestion
+  and matching still exist (see [operations](docs/operations.md)) but are not
+  needed to run the app.
 
 ## Developer setup
 

@@ -1331,3 +1331,15 @@ This section is updated as each task progresses, including verification evidence
   consent again). Playback then worked in Chrome without adding the account to
   User Management. Most likely cause: the remount created a second SDK player
   (the sign-in was also refreshed at the same time, so that is not fully ruled out).
+
+## 2026-11-13 20:22 UTC — Describe the app's sunset and current state in the README
+
+- Rewrote the README overview: what the app does, why it is sunset as a public
+  product (Spotify Development Mode admits only hand-added accounts; extended
+  quota is limited to established organizations), and its current state (works
+  end to end locally; one source; 10 of 30 tracks playable; Premium and desktop
+  browser required; not hosted).
+- Removed `docs/sources/stereogum.md`, the Stereogum feed evaluation; no adapter
+  was built and no other document links to it.
+- Validation: Prettier check; figures taken from the live development-database run
+  recorded above. Documentation only; no tests or builds run.
