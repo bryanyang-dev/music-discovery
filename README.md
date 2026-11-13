@@ -31,8 +31,40 @@ pnpm web:dev
 
 The listening-room prototype needs no database or credentials. To work on
 backend ingestion, copy `.env.example` to `.env` and fill in your PostgreSQL
-connection details. See [operations](docs/operations.md) for source configuration,
-database permissions and Lambda releases.
+connection details. Before running any local database command, export the bundled
+CA certificate from the repository root:
+
+```sh
+export NODE_EXTRA_CA_CERTS="$PWD/certs/prod-ca-2021.crt"
+```
+
+Run this once per terminal session, before starting Node. It is required for
+source registration, live previews, ingestion and migrations against the configured
+database; without it, TLS verification fails. Offline fixtures and frontend work
+do not need it.
+
+To register a source, choose a unique key and run:
+
+```sh
+pnpm sources:add \
+  --key my_pitchfork_feed \
+  --name pitchfork \
+  --category best_new_track \
+  --feed-url https://pitchfork.com/feed/reviews/best/tracks/rss
+```
+
+Registration writes the source configuration to the database. Only Pitchfork Best
+New Tracks is currently supported; another publication needs its own adapter
+before it can be registered. Preview the registered source without writes, then
+ingest it:
+
+```sh
+pnpm ingest:preview --source my_pitchfork_feed
+pnpm ingest --source my_pitchfork_feed
+```
+
+See [operations](docs/operations.md#source-selection-and-registration) for database
+permissions, source configuration and Lambda releases.
 
 Useful development commands:
 

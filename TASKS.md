@@ -1269,3 +1269,14 @@ This section is updated as each task progresses, including verification evidence
 - Validation: checked Markdown formatting, local documentation links/anchors and
   commands against package.json. Application tests, typechecking and Lambda builds
   skipped because only documentation changed.
+
+## 2026-11-13 02:56 UTC — Document local source CLI setup
+
+- Added a once-per-terminal CA certificate export to README backend setup and
+  explained which database commands require it.
+- Added source registration, preview and ingestion examples, including unique-key
+  and supported-adapter requirements. Retained operational details in the existing
+  operations guide.
+- Validation: checked Markdown formatting, referenced files/anchors and commands
+  against package.json and the CLI parser. Application tests, typechecking and
+  Lambda builds skipped because only documentation changed.
