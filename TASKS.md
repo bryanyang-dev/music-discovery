@@ -1,5 +1,20 @@
 # Pitchfork ingestion — implementation work log
 
+## 2026-11-13 02:30 UTC — Design per-user tapes from LLM-extracted feeds
+
+- Added the proposed [playlist generation design](docs/playlist-generation-design.md).
+  Discovery becomes a shared serverless pipeline: hourly fetch of any registered
+  RSS/Atom feed, SQS-driven Claude structured extraction of credited songs
+  (including album-review highlights) with verbatim-evidence validation, genre and
+  descriptor metadata, and SQS-triggered Spotify matching.
+- Tapes become per user: Supabase Auth with Spotify sign-in, KMS-encrypted refresh
+  tokens, asynchronous tape generation with deterministic, diversity-aware
+  selection, Web Playback SDK playback and optional saving to Spotify.
+  Prompt-based tapes are a later phase.
+- Broke the design into GitHub issues #16–#43, tracked in #44 with parallel waves.
+- Documentation only; no code, dependencies, migrations or deployments changed.
+  Open questions are listed in the design and #16.
+
 ## 2026-11-12 21:18 UTC — Match Spotify bonus track release labels
 
 - Matched `Born Again` by Star Moles to Spotify's `Born Again - Bonus Track`.

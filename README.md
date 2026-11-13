@@ -79,3 +79,5 @@ Useful development commands:
 
 For backend design details, see the [ingestion specification](docs/ingestion-spec.md)
 and [timing guide](docs/timing-and-policies.md).
+The proposed move to LLM-extracted feeds and per-user tapes is described in the
+[playlist generation design](docs/playlist-generation-design.md).
